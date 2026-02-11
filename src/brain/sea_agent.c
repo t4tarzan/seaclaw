@@ -227,9 +227,33 @@ static ParsedResponse parse_llm_response(const char* body, u32 body_len,
     content[content_slice.len] = '\0';
     pr.text = content;
 
+    /* The zero-copy JSON parser returns slices into the original buffer,
+     * so string content still has escaped quotes (\"). We need to unescape
+     * the content before searching for tool_call JSON blocks. */
+    char* unescaped = (char*)sea_arena_alloc(arena, content_slice.len + 1, 1);
+    if (unescaped) {
+        u32 ui = 0;
+        for (u32 ci = 0; ci < content_slice.len; ci++) {
+            if (content[ci] == '\\' && ci + 1 < content_slice.len) {
+                char next = content[ci + 1];
+                if (next == '"')       { unescaped[ui++] = '"';  ci++; }
+                else if (next == '\\') { unescaped[ui++] = '\\'; ci++; }
+                else if (next == 'n')  { unescaped[ui++] = '\n'; ci++; }
+                else if (next == 'r')  { unescaped[ui++] = '\r'; ci++; }
+                else if (next == 't')  { unescaped[ui++] = '\t'; ci++; }
+                else                   { unescaped[ui++] = content[ci]; }
+            } else {
+                unescaped[ui++] = content[ci];
+            }
+        }
+        unescaped[ui] = '\0';
+        pr.text = unescaped;
+    }
+
     /* Check if content contains a tool_call JSON block */
-    const char* tc_start = strstr(content, "{\"tool_call\"");
-    if (!tc_start) tc_start = strstr(content, "{ \"tool_call\"");
+    const char* search = pr.text;
+    const char* tc_start = strstr(search, "{\"tool_call\"");
+    if (!tc_start) tc_start = strstr(search, "{ \"tool_call\"");
     if (tc_start) {
         /* Find the matching closing brace */
         int depth = 0;
@@ -269,6 +293,8 @@ static ParsedResponse parse_llm_response(const char* body, u32 body_len,
                         }
 
                         pr.has_tool_call = true;
+                        SEA_LOG_INFO("AGENT", "Detected tool call: %s(%s)",
+                                     pr.tool_name, pr.tool_args ? pr.tool_args : "");
                     }
                 }
             }
