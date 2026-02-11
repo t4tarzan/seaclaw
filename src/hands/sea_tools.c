@@ -61,6 +61,9 @@ extern SeaError tool_weather(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_unit_convert(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_password_gen(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_count_lines(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_edit_file(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_cron_manage(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_memory_manage(SeaSlice args, SeaArena* arena, SeaSlice* output);
 
 /* ── The Static Registry ──────────────────────────────────── */
 
@@ -115,6 +118,9 @@ static const SeaTool s_registry[] = {
     {48, "unit_convert",  "Unit conversion. Args: <val> <from> <to>",              tool_unit_convert },
     {49, "password_gen",  "Generate password. Args: [length] [-n no symbols]",      tool_password_gen },
     {50, "count_lines",   "Count lines of code. Args: [dir] [ext]",                tool_count_lines },
+    {51, "edit_file",     "Edit file. Args: <path>|||<find>|||<replace>",           tool_edit_file },
+    {52, "cron_manage",   "Manage cron. Args: list|add|remove|pause|resume",       tool_cron_manage },
+    {53, "memory_manage", "Memory. Args: read|write|append|daily|bootstrap",       tool_memory_manage },
 };
 
 static const u32 s_registry_count = sizeof(s_registry) / sizeof(s_registry[0]);

@@ -157,7 +157,10 @@ HANDS_SRC := \
 	src/hands/impl/tool_weather.c \
 	src/hands/impl/tool_unit_convert.c \
 	src/hands/impl/tool_password_gen.c \
-	src/hands/impl/tool_count_lines.c
+	src/hands/impl/tool_count_lines.c \
+	src/hands/impl/tool_edit_file.c \
+	src/hands/impl/tool_cron_manage.c \
+	src/hands/impl/tool_memory_manage.c
 
 MAIN_SRC := src/main.c
 

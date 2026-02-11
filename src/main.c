@@ -20,6 +20,9 @@
 #include "seaclaw/sea_config.h"
 #include "seaclaw/sea_agent.h"
 #include "seaclaw/sea_a2a.h"
+#include "seaclaw/sea_cron.h"
+#include "seaclaw/sea_memory.h"
+#include "seaclaw/sea_skill.h"
 #include <pthread.h>
 
 #include <stdio.h>
@@ -61,6 +64,11 @@ static const char*   s_config_path = "config.json";
 static SeaAgentConfig s_agent_cfg;
 static SeaBus        s_bus;
 static SeaChannelManager s_chan_mgr;
+static SeaCronScheduler  s_cron_inst;
+SeaCronScheduler*        s_cron = NULL;
+static SeaMemory         s_memory_inst;
+SeaMemory*               s_memory = NULL;
+static SeaSkillRegistry  s_skill_reg;
 
 /* ── Signal handler ───────────────────────────────────────── */
 
@@ -933,6 +941,26 @@ int main(int argc, char** argv) {
 
     sea_agent_init(&s_agent_cfg);
 
+    /* Initialize cron scheduler */
+    if (sea_cron_init(&s_cron_inst, s_db, NULL) == SEA_OK) {
+        s_cron = &s_cron_inst;
+        sea_cron_load(s_cron);
+        SEA_LOG_INFO("CRON", "Scheduler ready (%u jobs)", sea_cron_count(s_cron));
+    }
+
+    /* Initialize memory system */
+    if (sea_memory_init(&s_memory_inst, NULL, 128 * 1024) == SEA_OK) {
+        s_memory = &s_memory_inst;
+        sea_memory_create_defaults(s_memory);
+        SEA_LOG_INFO("MEMORY", "Memory system ready");
+    }
+
+    /* Initialize skills */
+    if (sea_skill_init(&s_skill_reg, NULL) == SEA_OK) {
+        sea_skill_load_all(&s_skill_reg);
+        SEA_LOG_INFO("SKILL", "Skills loaded: %u", sea_skill_count(&s_skill_reg));
+    }
+
     SEA_LOG_INFO("SHIELD", "Grammar Filter: ACTIVE.");
 
     int ret = 0;
@@ -974,6 +1002,9 @@ int main(int argc, char** argv) {
 
     printf("\n");
     SEA_LOG_INFO("SYSTEM", "Shutting down...");
+    if (s_cron) { sea_cron_destroy(s_cron); s_cron = NULL; }
+    if (s_memory) { sea_memory_destroy(s_memory); s_memory = NULL; }
+    sea_skill_destroy(&s_skill_reg);
     if (s_db) {
         sea_db_log_event(s_db, "shutdown", "Sea-Claw stopped", "clean");
         sea_db_close(s_db);
