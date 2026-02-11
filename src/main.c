@@ -63,6 +63,56 @@ static void handle_signal(int sig) {
     s_running = false;
 }
 
+/* ── .env file loader ────────────────────────────────────── */
+
+static void load_dotenv(const char* path) {
+    FILE* f = fopen(path, "r");
+    if (!f) return;
+    char line[1024];
+    while (fgets(line, sizeof(line), f)) {
+        /* Skip comments and empty lines */
+        char* p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '#' || *p == '\n' || *p == '\0') continue;
+        /* Find = separator */
+        char* eq = strchr(p, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        char* key = p;
+        char* val = eq + 1;
+        /* Trim trailing whitespace/newline from key */
+        char* ke = eq - 1;
+        while (ke > key && (*ke == ' ' || *ke == '\t')) *ke-- = '\0';
+        /* Trim leading whitespace from value */
+        while (*val == ' ' || *val == '\t') val++;
+        /* Trim trailing whitespace/newline from value */
+        size_t vlen = strlen(val);
+        while (vlen > 0 && (val[vlen-1] == '\n' || val[vlen-1] == '\r' ||
+               val[vlen-1] == ' ' || val[vlen-1] == '\t')) val[--vlen] = '\0';
+        /* Strip surrounding quotes */
+        if (vlen >= 2 && ((val[0] == '"' && val[vlen-1] == '"') ||
+                          (val[0] == '\'' && val[vlen-1] == '\''))) {
+            val[vlen-1] = '\0';
+            val++;
+        }
+        /* Only set if not already in environment */
+        setenv(key, val, 0);
+    }
+    fclose(f);
+    SEA_LOG_INFO("CONFIG", "Loaded .env file: %s", path);
+}
+
+/* ── Provider name → enum ────────────────────────────────── */
+
+static SeaLlmProvider parse_provider(const char* name) {
+    if (!name) return SEA_LLM_OPENAI;
+    if (strcmp(name, "anthropic") == 0)  return SEA_LLM_ANTHROPIC;
+    if (strcmp(name, "gemini") == 0)     return SEA_LLM_GEMINI;
+    if (strcmp(name, "openrouter") == 0) return SEA_LLM_OPENROUTER;
+    if (strcmp(name, "local") == 0)      return SEA_LLM_LOCAL;
+    return SEA_LLM_OPENAI;
+}
+
 /* ── Command dispatch ─────────────────────────────────────── */
 
 static void cmd_help(void) {
@@ -592,10 +642,25 @@ int main(int argc, char** argv) {
     printf("\033[2J\033[H");  /* Clear screen */
     printf("%s\n", BANNER);
 
+    /* Load .env file (before config so env vars are available) */
+    load_dotenv(".env");
+
     /* Load config (uses a small temporary arena for JSON parsing) */
     SeaArena cfg_arena;
     sea_arena_create(&cfg_arena, 8192);
     sea_config_load(&s_config, s_config_path, &cfg_arena);
+
+    /* Environment variable overrides for secrets (non-empty only) */
+    const char* env_val;
+    if ((env_val = getenv("OPENAI_API_KEY")) && *env_val &&
+        (!s_config.llm_api_key || !*s_config.llm_api_key))
+        s_config.llm_api_key = env_val;
+    if ((env_val = getenv("TELEGRAM_BOT_TOKEN")) && *env_val &&
+        (!s_config.telegram_token || !*s_config.telegram_token))
+        s_config.telegram_token = env_val;
+    if ((env_val = getenv("TELEGRAM_CHAT_ID")) && *env_val &&
+        s_config.telegram_chat_id == 0)
+        s_config.telegram_chat_id = atoll(env_val);
 
     /* Config values as fallbacks for CLI args */
     if (!tg_token && s_config.telegram_token) {
@@ -637,32 +702,51 @@ int main(int argc, char** argv) {
 
     /* Initialize agent */
     memset(&s_agent_cfg, 0, sizeof(s_agent_cfg));
-    if (s_config.llm_provider) {
-        if (strcmp(s_config.llm_provider, "anthropic") == 0)
-            s_agent_cfg.provider = SEA_LLM_ANTHROPIC;
-        else if (strcmp(s_config.llm_provider, "local") == 0)
-            s_agent_cfg.provider = SEA_LLM_LOCAL;
-        else
-            s_agent_cfg.provider = SEA_LLM_OPENAI;
+    s_agent_cfg.provider = parse_provider(s_config.llm_provider);
+    s_agent_cfg.api_key  = s_config.llm_api_key;
+    s_agent_cfg.api_url  = s_config.llm_api_url;
+    s_agent_cfg.model    = s_config.llm_model;
+
+    /* Env var overrides per provider for primary */
+    switch (s_agent_cfg.provider) {
+        case SEA_LLM_OPENAI:
+            if (!s_agent_cfg.api_key && (env_val = getenv("OPENAI_API_KEY")))
+                s_agent_cfg.api_key = env_val;
+            break;
+        case SEA_LLM_ANTHROPIC:
+            if (!s_agent_cfg.api_key && (env_val = getenv("ANTHROPIC_API_KEY")))
+                s_agent_cfg.api_key = env_val;
+            break;
+        case SEA_LLM_GEMINI:
+            if (!s_agent_cfg.api_key && (env_val = getenv("GEMINI_API_KEY")))
+                s_agent_cfg.api_key = env_val;
+            break;
+        case SEA_LLM_OPENROUTER:
+            if (!s_agent_cfg.api_key && (env_val = getenv("OPENROUTER_API_KEY")))
+                s_agent_cfg.api_key = env_val;
+            break;
+        case SEA_LLM_LOCAL:
+            break;
     }
-    s_agent_cfg.api_key = s_config.llm_api_key;
-    s_agent_cfg.api_url = s_config.llm_api_url;
-    s_agent_cfg.model   = s_config.llm_model;
 
     /* Wire fallback providers */
     s_agent_cfg.fallback_count = 0;
     for (u32 fi = 0; fi < s_config.llm_fallback_count && fi < SEA_MAX_FALLBACKS; fi++) {
         SeaLlmFallback* fb = &s_agent_cfg.fallbacks[fi];
-        const char* prov = s_config.llm_fallbacks[fi].provider;
-        if (prov && strcmp(prov, "anthropic") == 0)
-            fb->provider = SEA_LLM_ANTHROPIC;
-        else if (prov && strcmp(prov, "local") == 0)
-            fb->provider = SEA_LLM_LOCAL;
-        else
-            fb->provider = SEA_LLM_OPENAI;
-        fb->api_key = s_config.llm_fallbacks[fi].api_key;
-        fb->api_url = s_config.llm_fallbacks[fi].api_url;
-        fb->model   = s_config.llm_fallbacks[fi].model;
+        fb->provider = parse_provider(s_config.llm_fallbacks[fi].provider);
+        fb->api_key  = s_config.llm_fallbacks[fi].api_key;
+        fb->api_url  = s_config.llm_fallbacks[fi].api_url;
+        fb->model    = s_config.llm_fallbacks[fi].model;
+        /* Env var override for fallback API keys */
+        if (!fb->api_key) {
+            switch (fb->provider) {
+                case SEA_LLM_OPENAI:     fb->api_key = getenv("OPENAI_API_KEY"); break;
+                case SEA_LLM_ANTHROPIC:  fb->api_key = getenv("ANTHROPIC_API_KEY"); break;
+                case SEA_LLM_GEMINI:     fb->api_key = getenv("GEMINI_API_KEY"); break;
+                case SEA_LLM_OPENROUTER: fb->api_key = getenv("OPENROUTER_API_KEY"); break;
+                case SEA_LLM_LOCAL:      break;
+            }
+        }
         s_agent_cfg.fallback_count++;
     }
 

@@ -20,6 +20,14 @@ test_config
 # Working files (not for public repo)
 /working/
 /Kimi_Agent_OpenClaw C Rebuild Project/
+/openclaw_analysis/
+claude.md
+docs/PERFORMANCE_PHILOSOPHY.md
+docs/PROJECT_STRUCTURE.md
+docs/TERMINAL_UX_REFERENCE.md
+
+# Environment secrets
+.env
 
 # IDE
 .vscode/

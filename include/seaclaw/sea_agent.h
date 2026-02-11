@@ -20,6 +20,8 @@
 typedef enum {
     SEA_LLM_OPENAI = 0,    /* OpenAI API (gpt-4, gpt-3.5-turbo)    */
     SEA_LLM_ANTHROPIC,     /* Anthropic API (claude-3)              */
+    SEA_LLM_GEMINI,        /* Google Gemini API (gemini-2.5-pro)    */
+    SEA_LLM_OPENROUTER,    /* OpenRouter API (any model)            */
     SEA_LLM_LOCAL,         /* Local OpenAI-compatible (ollama, etc) */
 } SeaLlmProvider;
 

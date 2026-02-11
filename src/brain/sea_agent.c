@@ -33,29 +33,38 @@ void sea_agent_defaults(SeaAgentConfig* cfg) {
     if (!cfg) return;
     if (!cfg->api_url) {
         switch (cfg->provider) {
-            case SEA_LLM_OPENAI:    cfg->api_url = "https://api.openai.com/v1/chat/completions"; break;
-            case SEA_LLM_ANTHROPIC: cfg->api_url = "https://api.anthropic.com/v1/messages"; break;
-            case SEA_LLM_LOCAL:     cfg->api_url = "http://localhost:11434/v1/chat/completions"; break;
+            case SEA_LLM_OPENAI:     cfg->api_url = "https://api.openai.com/v1/chat/completions"; break;
+            case SEA_LLM_ANTHROPIC:  cfg->api_url = "https://api.anthropic.com/v1/messages"; break;
+            case SEA_LLM_GEMINI:     cfg->api_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"; break;
+            case SEA_LLM_OPENROUTER: cfg->api_url = "https://openrouter.ai/api/v1/chat/completions"; break;
+            case SEA_LLM_LOCAL:      cfg->api_url = "http://localhost:11434/v1/chat/completions"; break;
         }
     }
     if (!cfg->model) {
         switch (cfg->provider) {
-            case SEA_LLM_OPENAI:    cfg->model = "gpt-4o-mini"; break;
-            case SEA_LLM_ANTHROPIC: cfg->model = "claude-3-haiku-20240307"; break;
-            case SEA_LLM_LOCAL:     cfg->model = "llama3"; break;
+            case SEA_LLM_OPENAI:     cfg->model = "gpt-4o-mini"; break;
+            case SEA_LLM_ANTHROPIC:  cfg->model = "claude-3-haiku-20240307"; break;
+            case SEA_LLM_GEMINI:     cfg->model = "gemini-2.5-pro"; break;
+            case SEA_LLM_OPENROUTER: cfg->model = "moonshotai/kimi-k2.5"; break;
+            case SEA_LLM_LOCAL:      cfg->model = "llama3"; break;
         }
     }
-    if (cfg->max_tokens == 0) cfg->max_tokens = 1024;
+    if (cfg->max_tokens == 0) cfg->max_tokens = 4096;
     if (cfg->temperature == 0.0) cfg->temperature = 0.7;
     if (cfg->max_tool_rounds == 0) cfg->max_tool_rounds = 5;
 }
 
 void sea_agent_init(SeaAgentConfig* cfg) {
     sea_agent_defaults(cfg);
-    SEA_LOG_INFO("AGENT", "Provider: %s, Model: %s",
-        cfg->provider == SEA_LLM_OPENAI ? "OpenAI" :
-        cfg->provider == SEA_LLM_ANTHROPIC ? "Anthropic" : "Local",
-        cfg->model);
+    const char* prov_name = "Unknown";
+    switch (cfg->provider) {
+        case SEA_LLM_OPENAI:     prov_name = "OpenAI"; break;
+        case SEA_LLM_ANTHROPIC:  prov_name = "Anthropic"; break;
+        case SEA_LLM_GEMINI:     prov_name = "Gemini"; break;
+        case SEA_LLM_OPENROUTER: prov_name = "OpenRouter"; break;
+        case SEA_LLM_LOCAL:      prov_name = "Local"; break;
+    }
+    SEA_LOG_INFO("AGENT", "Provider: %s, Model: %s", prov_name, cfg->model);
 }
 
 /* ── String builder helpers ───────────────────────────────── */
