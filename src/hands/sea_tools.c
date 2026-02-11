@@ -67,6 +67,7 @@ extern SeaError tool_memory_manage(SeaSlice args, SeaArena* arena, SeaSlice* out
 extern SeaError tool_web_search(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_spawn(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_message(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_recall(SeaSlice args, SeaArena* arena, SeaSlice* output);
 
 /* ── The Static Registry ──────────────────────────────────── */
 
@@ -127,6 +128,7 @@ static const SeaTool s_registry[] = {
     {54, "web_search",    "Brave web search. Args: <query>",                       tool_web_search },
     {55, "spawn",         "Spawn sub-agent. Args: <task description>",              tool_spawn },
     {56, "message",       "Send message. Args: <channel:chat_id> <text>",           tool_message },
+    {57, "recall",        "Remember/recall/forget facts. Args: remember|recall|forget|count", tool_recall },
 };
 
 static const u32 s_registry_count = sizeof(s_registry) / sizeof(s_registry[0]);

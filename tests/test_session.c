@@ -16,7 +16,13 @@
 
 /* Stubs for symbols referenced by sea_agent.o */
 #include "seaclaw/sea_tools.h"
+#include "seaclaw/sea_memory.h"
+#include "seaclaw/sea_recall.h"
 SeaDb* s_db = NULL;
+SeaMemory* s_memory = NULL;
+SeaRecall* s_recall = NULL;
+const char* sea_memory_read_bootstrap(SeaMemory* m, const char* f) { (void)m; (void)f; return NULL; }
+const char* sea_recall_build_context(SeaRecall* r, const char* q, SeaArena* a) { (void)r; (void)q; (void)a; return NULL; }
 SeaError sea_tool_exec(const char* n, SeaSlice a, SeaArena* ar, SeaSlice* o) {
     (void)n; (void)a; (void)ar; (void)o; return SEA_ERR_NOT_FOUND;
 }

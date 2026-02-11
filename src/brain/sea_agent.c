@@ -13,12 +13,16 @@
 #include "seaclaw/sea_shield.h"
 #include "seaclaw/sea_db.h"
 #include "seaclaw/sea_log.h"
+#include "seaclaw/sea_memory.h"
+#include "seaclaw/sea_recall.h"
 
 #include <stdio.h>
 #include <string.h>
 
-/* External DB handle from main.c for audit trail */
+/* External handles from main.c */
 extern SeaDb* s_db;
+extern SeaMemory* s_memory;
+extern SeaRecall* s_recall;
 
 /* ── Defaults ─────────────────────────────────────────────── */
 
@@ -28,6 +32,17 @@ static const char* DEFAULT_SYSTEM_PROMPT =
     "Do NOT use tools unless the user explicitly asks for a system operation. "
     "Only use a tool if the user's request cannot be answered from your knowledge. "
     "Available tools (use ONLY when needed):\n";
+
+static const char* MEMORY_INSTRUCTIONS =
+    "\n## Memory\n"
+    "You have persistent memory across conversations via the 'recall' tool.\n"
+    "- When the user tells you their name, preferences, or important facts, "
+    "use: recall remember user 8 <fact>\n"
+    "- When the user states a preference, use: recall remember preference 7 <pref>\n"
+    "- To recall relevant context, use: recall recall <query>\n"
+    "- Important facts get importance 8-10, casual facts 3-5.\n"
+    "- Do NOT announce that you are saving memory. Just do it silently.\n"
+    "- Below is your current memory context (relevant facts for this query):\n";
 
 void sea_agent_defaults(SeaAgentConfig* cfg) {
     if (!cfg) return;
@@ -363,9 +378,45 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
     }
 
     /* Build system prompt with tool descriptions */
-    const char* system_prompt = cfg->system_prompt
+    const char* base_prompt = cfg->system_prompt
         ? cfg->system_prompt
         : sea_agent_build_system_prompt(arena);
+
+    /* Inject memory context: SOUL + USER from files, recall facts from DB */
+    const char* system_prompt = base_prompt;
+    {
+        StrBuf mp = strbuf_new(arena, 8192);
+        strbuf_append(&mp, base_prompt);
+
+        /* Bootstrap identity from markdown files (compact) */
+        if (s_memory) {
+            const char* soul = sea_memory_read_bootstrap(s_memory, "SOUL.md");
+            if (soul) {
+                strbuf_append(&mp, "\n## Personality\n");
+                strbuf_append(&mp, soul);
+                strbuf_append(&mp, "\n");
+            }
+            const char* user_profile = sea_memory_read_bootstrap(s_memory, "USER.md");
+            if (user_profile) {
+                strbuf_append(&mp, "\n## User Profile\n");
+                strbuf_append(&mp, user_profile);
+                strbuf_append(&mp, "\n");
+            }
+        }
+
+        /* Memory instructions + relevant facts from recall DB */
+        strbuf_append(&mp, MEMORY_INSTRUCTIONS);
+        if (s_recall) {
+            const char* recall_ctx = sea_recall_build_context(s_recall, user_input, arena);
+            if (recall_ctx) {
+                strbuf_append(&mp, recall_ctx);
+            } else {
+                strbuf_append(&mp, "(No relevant facts stored yet.)\n");
+            }
+        }
+
+        system_prompt = mp.buf;
+    }
 
     /* Build auth header */
     const char* auth_hdr = build_auth_header(cfg, arena);

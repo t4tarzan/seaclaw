@@ -24,6 +24,7 @@
 #include "seaclaw/sea_memory.h"
 #include "seaclaw/sea_skill.h"
 #include "seaclaw/sea_usage.h"
+#include "seaclaw/sea_recall.h"
 #include <pthread.h>
 
 #include <stdio.h>
@@ -74,6 +75,8 @@ SeaMemory*               s_memory = NULL;
 static SeaSkillRegistry  s_skill_reg;
 static SeaUsageTracker   s_usage_inst;
 SeaUsageTracker*         s_usage = NULL;
+static SeaRecall         s_recall_inst;
+SeaRecall*               s_recall = NULL;
 
 /* ── Signal handler ───────────────────────────────────────── */
 
@@ -863,7 +866,7 @@ int main(int argc, char** argv) {
             } else {
                 printf("    %s \033[33m○ (will be created)\033[0m\n", skills_path);
             }
-            printf("\n  \033[1mTools:\033[0m         56 compiled in\n");
+            printf("\n  \033[1mTools:\033[0m         57 compiled in\n");
             printf("\n  ════════════════════════════════════════\n\n");
             sea_arena_destroy(&da);
             return 0;
@@ -871,10 +874,117 @@ int main(int argc, char** argv) {
             /* ── Onboard: interactive first-run setup ──────────── */
             printf("\n\033[1m  Sea-Claw Onboard Wizard\033[0m\n");
             printf("  ════════════════════════════════════════\n\n");
-            printf("  This wizard creates a config.json for you.\n\n");
+
+            /* ── Step 1: Personalization ──────────────────────── */
+            printf("  \033[1mStep 1/3 — Who are you?\033[0m\n\n");
+            char ob_name[128] = {0}, ob_work[256] = {0}, ob_tone[64] = {0};
+
+            printf("  Your name (or press Enter to skip): ");
+            fflush(stdout);
+            if (fgets(ob_name, sizeof(ob_name), stdin)) {
+                ob_name[strcspn(ob_name, "\n")] = '\0';
+            }
+            printf("  What do you do? (e.g. developer, student, business owner): ");
+            fflush(stdout);
+            if (fgets(ob_work, sizeof(ob_work), stdin)) {
+                ob_work[strcspn(ob_work, "\n")] = '\0';
+            }
+            printf("  Preferred tone (casual/professional/technical) [professional]: ");
+            fflush(stdout);
+            if (fgets(ob_tone, sizeof(ob_tone), stdin)) {
+                ob_tone[strcspn(ob_tone, "\n")] = '\0';
+            }
+            if (!ob_tone[0]) strncpy(ob_tone, "professional", sizeof(ob_tone) - 1);
+
+            /* Write USER.md */
+            {
+                const char* home = getenv("HOME");
+                if (!home) home = "/tmp";
+                char user_dir[2048];
+                snprintf(user_dir, sizeof(user_dir), "%s/.seaclaw", home);
+                mkdir(user_dir, 0755);
+                char user_path[4096];
+                snprintf(user_path, sizeof(user_path), "%s/USER.md", user_dir);
+                FILE* uf = fopen(user_path, "w");
+                if (uf) {
+                    fprintf(uf, "# User Profile\n\n");
+                    if (ob_name[0]) fprintf(uf, "- **Name:** %s\n", ob_name);
+                    if (ob_work[0]) fprintf(uf, "- **Role:** %s\n", ob_work);
+                    fprintf(uf, "- **Preferred tone:** %s\n", ob_tone);
+                    fprintf(uf, "\nThis profile was created during onboarding.\n");
+                    fprintf(uf, "Edit this file anytime at: %s\n", user_path);
+                    fclose(uf);
+                    printf("  \033[32m✓\033[0m User profile saved to %s\n", user_path);
+                }
+                /* Update SOUL.md with tone preference */
+                char soul_path[4096];
+                snprintf(soul_path, sizeof(soul_path), "%s/SOUL.md", user_dir);
+                FILE* sf = fopen(soul_path, "w");
+                if (sf) {
+                    fprintf(sf, "# Soul\n\n## Principles\n");
+                    fprintf(sf, "- Be concise and direct\n");
+                    fprintf(sf, "- Prefer action over explanation\n");
+                    fprintf(sf, "- Use tools when they help\n");
+                    fprintf(sf, "- Remember context from previous conversations\n");
+                    fprintf(sf, "- Protect user data and privacy\n");
+                    fprintf(sf, "- Admit uncertainty rather than guess\n\n");
+                    fprintf(sf, "## Tone\n");
+                    if (strcmp(ob_tone, "casual") == 0) {
+                        fprintf(sf, "- Friendly and relaxed\n");
+                        fprintf(sf, "- Use simple language, avoid jargon\n");
+                        fprintf(sf, "- It's okay to be brief and informal\n");
+                    } else if (strcmp(ob_tone, "technical") == 0) {
+                        fprintf(sf, "- Precise and detailed\n");
+                        fprintf(sf, "- Use technical terminology freely\n");
+                        fprintf(sf, "- Include code examples when relevant\n");
+                        fprintf(sf, "- Assume the user is technically proficient\n");
+                    } else {
+                        fprintf(sf, "- Professional but approachable\n");
+                        fprintf(sf, "- Technical when needed, simple when possible\n");
+                        fprintf(sf, "- No unnecessary filler or pleasantries\n");
+                    }
+                    if (ob_name[0]) {
+                        fprintf(sf, "\n## User\n- Address the user as %s\n", ob_name);
+                    }
+                    fclose(sf);
+                    printf("  \033[32m✓\033[0m Personality configured (%s tone)\n", ob_tone);
+                }
+            }
+
+            /* Seed recall DB with user facts */
+            {
+                SeaDb* ob_db = NULL;
+                if (sea_db_open(&ob_db, "seaclaw.db") == SEA_OK) {
+                    SeaRecall ob_recall;
+                    if (sea_recall_init(&ob_recall, ob_db, 800) == SEA_OK) {
+                        if (ob_name[0]) {
+                            char fact[256];
+                            snprintf(fact, sizeof(fact), "The user's name is %.200s", ob_name);
+                            sea_recall_store(&ob_recall, "user", fact, NULL, 9);
+                        }
+                        if (ob_work[0]) {
+                            char fact[512];
+                            snprintf(fact, sizeof(fact), "The user works as: %.400s", ob_work);
+                            sea_recall_store(&ob_recall, "user", fact, NULL, 8);
+                        }
+                        {
+                            char fact[128];
+                            snprintf(fact, sizeof(fact), "The user prefers %s tone", ob_tone);
+                            sea_recall_store(&ob_recall, "preference", fact, NULL, 8);
+                        }
+                        sea_recall_destroy(&ob_recall);
+                        printf("  \033[32m✓\033[0m Memory seeded (%s)\n",
+                               ob_name[0] ? ob_name : "anonymous");
+                    }
+                    sea_db_close(ob_db);
+                }
+            }
+
+            /* ── Step 2: LLM Provider ────────────────────────── */
+            printf("\n  \033[1mStep 2/3 — LLM Provider\033[0m\n\n");
             char ob_provider[64] = {0}, ob_key[256] = {0}, ob_model[128] = {0};
-            char ob_tg_token[256] = {0}, ob_tg_chat[32] = {0};
-            printf("  LLM Provider (openai/anthropic/gemini/openrouter/local): ");
+
+            printf("  Provider (openai/anthropic/gemini/openrouter/local): ");
             fflush(stdout);
             if (fgets(ob_provider, sizeof(ob_provider), stdin)) {
                 ob_provider[strcspn(ob_provider, "\n")] = '\0';
@@ -889,18 +999,24 @@ int main(int argc, char** argv) {
             if (fgets(ob_model, sizeof(ob_model), stdin)) {
                 ob_model[strcspn(ob_model, "\n")] = '\0';
             }
-            printf("  Telegram Bot Token (or press Enter to skip): ");
+
+            /* ── Step 3: Telegram (optional) ─────────────────── */
+            printf("\n  \033[1mStep 3/3 — Telegram Bot (optional)\033[0m\n\n");
+            char ob_tg_token[256] = {0}, ob_tg_chat[32] = {0};
+
+            printf("  Bot Token (or press Enter to skip): ");
             fflush(stdout);
             if (fgets(ob_tg_token, sizeof(ob_tg_token), stdin)) {
                 ob_tg_token[strcspn(ob_tg_token, "\n")] = '\0';
             }
             if (ob_tg_token[0]) {
-                printf("  Telegram Chat ID: ");
+                printf("  Chat ID: ");
                 fflush(stdout);
                 if (fgets(ob_tg_chat, sizeof(ob_tg_chat), stdin)) {
                     ob_tg_chat[strcspn(ob_tg_chat, "\n")] = '\0';
                 }
             }
+
             /* Write config.json */
             FILE* cf = fopen("config.json", "w");
             if (cf) {
@@ -917,9 +1033,17 @@ int main(int argc, char** argv) {
                 fprintf(cf, "}\n");
                 fclose(cf);
                 printf("\n  \033[32m✓\033[0m Config written to config.json\n");
-                printf("  Run \033[1m./sea_claw\033[0m to start!\n\n");
             } else {
                 printf("\n  \033[31m✗\033[0m Failed to write config.json\n\n");
+                return 1;
+            }
+
+            printf("\n  ════════════════════════════════════════\n");
+            printf("  \033[32m\033[1m  Setup complete!\033[0m\n\n");
+            printf("  Run \033[1m./sea_claw\033[0m to start chatting.\n");
+            printf("  Run \033[1m./sea_claw --doctor\033[0m to verify.\n\n");
+            if (ob_name[0]) {
+                printf("  Welcome aboard, %s. The Vault remembers.\n\n", ob_name);
             }
             return 0;
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -1083,6 +1207,12 @@ int main(int argc, char** argv) {
         sea_usage_load(s_usage);
     }
 
+    /* Initialize recall engine (SQLite memory index) */
+    if (s_db && sea_recall_init(&s_recall_inst, s_db, 800) == SEA_OK) {
+        s_recall = &s_recall_inst;
+        SEA_LOG_INFO("RECALL", "Memory index ready (%u facts)", sea_recall_count(s_recall));
+    }
+
     SEA_LOG_INFO("SHIELD", "Grammar Filter: ACTIVE.");
 
     int ret = 0;
@@ -1125,6 +1255,7 @@ int main(int argc, char** argv) {
     printf("\n");
     SEA_LOG_INFO("SYSTEM", "Shutting down...");
     if (s_usage) { sea_usage_save(s_usage); s_usage = NULL; }
+    if (s_recall) { sea_recall_destroy(s_recall); s_recall = NULL; }
     if (s_cron) { sea_cron_destroy(s_cron); s_cron = NULL; }
     if (s_memory) { sea_memory_destroy(s_memory); s_memory = NULL; }
     sea_skill_destroy(&s_skill_reg);

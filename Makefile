@@ -109,6 +109,9 @@ SKILL_SRC := \
 USAGE_SRC := \
 	src/usage/sea_usage.c
 
+RECALL_SRC := \
+	src/recall/sea_recall.c
+
 HANDS_SRC := \
 	src/hands/sea_tools.c \
 	src/hands/impl/tool_echo.c \
@@ -166,11 +169,12 @@ HANDS_SRC := \
 	src/hands/impl/tool_memory_manage.c \
 	src/hands/impl/tool_web_search.c \
 	src/hands/impl/tool_spawn.c \
-	src/hands/impl/tool_message.c
+	src/hands/impl/tool_message.c \
+	src/hands/impl/tool_recall.c
 
 MAIN_SRC := src/main.c
 
-ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(A2A_SRC) $(BUS_SRC) $(CHANNEL_SRC) $(SESSION_SRC) $(MEMORY_SRC) $(CRON_SRC) $(SKILL_SRC) $(USAGE_SRC) $(HANDS_SRC) $(MAIN_SRC)
+ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(A2A_SRC) $(BUS_SRC) $(CHANNEL_SRC) $(SESSION_SRC) $(MEMORY_SRC) $(CRON_SRC) $(SKILL_SRC) $(USAGE_SRC) $(RECALL_SRC) $(HANDS_SRC) $(MAIN_SRC)
 ALL_OBJ := $(ALL_SRC:.c=.o)
 
 TEST_ARENA_SRC := tests/test_arena.c
@@ -203,6 +207,9 @@ TEST_CRON_OBJ := $(TEST_CRON_SRC:.c=.o)
 TEST_SKILL_SRC := tests/test_skill.c
 TEST_SKILL_OBJ := $(TEST_SKILL_SRC:.c=.o)
 
+TEST_RECALL_SRC := tests/test_recall.c
+TEST_RECALL_OBJ := $(TEST_RECALL_SRC:.c=.o)
+
 TEST_BENCH_SRC := tests/test_bench.c
 TEST_BENCH_OBJ := $(TEST_BENCH_SRC:.c=.o)
 
@@ -220,6 +227,7 @@ TESTBIN_SESSION := test_session
 TESTBIN_MEMORY  := test_memory
 TESTBIN_CRON    := test_cron
 TESTBIN_SKILL   := test_skill
+TESTBIN_RECALL  := test_recall
 TESTBIN_BENCH   := test_bench
 
 # ── Targets ───────────────────────────────────────────────────
@@ -258,7 +266,7 @@ debug: clean all
 
 # ── Tests ─────────────────────────────────────────────────────
 
-test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL)
+test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL)
 	@echo ""
 	@echo "  Running tests..."
 	@echo "  ────────────────"
@@ -272,6 +280,7 @@ test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN
 	./$(TESTBIN_MEMORY)
 	./$(TESTBIN_CRON)
 	./$(TESTBIN_SKILL)
+	./$(TESTBIN_RECALL)
 	@echo ""
 
 $(TESTBIN_ARENA): $(TEST_ARENA_OBJ) src/core/sea_arena.o src/core/sea_log.o
@@ -304,13 +313,16 @@ $(TESTBIN_CRON): $(TEST_CRON_OBJ) src/cron/sea_cron.o src/bus/sea_bus.o src/core
 $(TESTBIN_SKILL): $(TEST_SKILL_OBJ) src/skills/sea_skill.o src/core/sea_arena.o src/core/sea_log.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
+$(TESTBIN_RECALL): $(TEST_RECALL_OBJ) src/recall/sea_recall.o src/core/sea_arena.o src/core/sea_log.o src/core/sea_db.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
+
 $(TESTBIN_BENCH): $(TEST_BENCH_OBJ) src/core/sea_arena.o src/core/sea_log.o src/senses/sea_json.o src/shield/sea_shield.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
 # ── Clean ─────────────────────────────────────────────────────
 
 clean:
-	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_BENCH)
+	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_BENCH)
 	find src tests -name '*.o' -delete 2>/dev/null || true
 	@echo "  Cleaned."
 
