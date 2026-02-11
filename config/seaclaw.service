@@ -1,0 +1,35 @@
+[Unit]
+Description=Sea-Claw Sovereign AI Agent
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=seaclaw
+Group=seaclaw
+WorkingDirectory=/opt/seaclaw
+ExecStart=/opt/seaclaw/sea_claw --config /opt/seaclaw/config.json
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/seaclaw
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+
+# Resource limits
+LimitNOFILE=4096
+MemoryMax=256M
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=seaclaw
+
+[Install]
+WantedBy=multi-user.target
