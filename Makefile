@@ -97,7 +97,22 @@ HANDS_SRC := \
 	src/hands/impl/tool_web_fetch.c \
 	src/hands/impl/tool_task_manage.c \
 	src/hands/impl/tool_db_query.c \
-	src/hands/impl/tool_exa_search.c
+	src/hands/impl/tool_exa_search.c \
+	src/hands/impl/tool_text_summarize.c \
+	src/hands/impl/tool_text_transform.c \
+	src/hands/impl/tool_json_format.c \
+	src/hands/impl/tool_hash_compute.c \
+	src/hands/impl/tool_env_get.c \
+	src/hands/impl/tool_dir_list.c \
+	src/hands/impl/tool_file_info.c \
+	src/hands/impl/tool_process_list.c \
+	src/hands/impl/tool_dns_lookup.c \
+	src/hands/impl/tool_timestamp.c \
+	src/hands/impl/tool_math_eval.c \
+	src/hands/impl/tool_uuid_gen.c \
+	src/hands/impl/tool_random_gen.c \
+	src/hands/impl/tool_url_parse.c \
+	src/hands/impl/tool_encode_decode.c
 
 MAIN_SRC := src/main.c
 

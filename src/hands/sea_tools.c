@@ -20,6 +20,21 @@ extern SeaError tool_web_fetch(SeaSlice args, SeaArena* arena, SeaSlice* output)
 extern SeaError tool_task_manage(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_db_query(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_exa_search(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_text_summarize(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_text_transform(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_json_format(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_hash_compute(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_env_get(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_dir_list(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_file_info(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_process_list(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_dns_lookup(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_timestamp(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_math_eval(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_uuid_gen(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_random_gen(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_url_parse(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_encode_decode(SeaSlice args, SeaArena* arena, SeaSlice* output);
 
 /* ── The Static Registry ──────────────────────────────────── */
 
@@ -33,6 +48,21 @@ static const SeaTool s_registry[] = {
     { 7, "task_manage",   "Manage tasks. Args: list|create|title|desc|done|id", tool_task_manage },
     { 8, "db_query",      "Query database (read-only). Args: SELECT SQL",        tool_db_query },
     { 9, "exa_search",    "Web search via Exa. Args: search query",              tool_exa_search },
+    {10, "text_summarize","Analyze text stats. Args: text",                       tool_text_summarize },
+    {11, "text_transform","Transform text. Args: <upper|lower|reverse|base64enc|base64dec> text", tool_text_transform },
+    {12, "json_format",   "Pretty-print/validate JSON. Args: json string",        tool_json_format },
+    {13, "hash_compute",  "Hash text. Args: <crc32|djb2|fnv1a> text",             tool_hash_compute },
+    {14, "env_get",       "Get env variable (whitelisted). Args: VAR_NAME",       tool_env_get },
+    {15, "dir_list",      "List directory contents. Args: path",                  tool_dir_list },
+    {16, "file_info",     "File metadata. Args: file_path",                       tool_file_info },
+    {17, "process_list",  "List processes. Args: optional filter",                tool_process_list },
+    {18, "dns_lookup",    "DNS resolve hostname. Args: hostname",                 tool_dns_lookup },
+    {19, "timestamp",     "Current time. Args: optional unix|iso|utc|date",       tool_timestamp },
+    {20, "math_eval",     "Evaluate math. Args: expression (e.g. 2+3*4)",         tool_math_eval },
+    {21, "uuid_gen",      "Generate UUID v4. Args: optional count (1-10)",         tool_uuid_gen },
+    {22, "random_gen",    "Random values. Args: <number|string|hex|coin|dice>",   tool_random_gen },
+    {23, "url_parse",     "Parse URL components. Args: url",                      tool_url_parse },
+    {24, "encode_decode", "Encode/decode. Args: <urlencode|urldecode|htmlencode|htmldecode> text", tool_encode_decode },
 };
 
 static const u32 s_registry_count = sizeof(s_registry) / sizeof(s_registry[0]);
