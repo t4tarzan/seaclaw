@@ -1,0 +1,37 @@
+# Build artifacts
+/dist/
+/build/
+*.o
+*.a
+*.so
+*.dylib
+sea_claw
+
+# Working files (not for public repo)
+/working/
+/Kimi_Agent_OpenClaw C Rebuild Project/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.pgpass
+*.pem
+*.key
+config.json
+!config/config.example.json
+
+# Logs
+*.log
+
+# Core dumps
+core
+core.*
