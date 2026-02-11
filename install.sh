@@ -40,10 +40,10 @@ show_banner() {
     echo -e "${BOLD}${CYAN}"
     echo "    ╔═══════════════════════════════════════════╗"
     echo "    ║                                           ║"
-    echo "    ║   🦀  Sea-Claw Installer  v1.0.0         ║"
+    echo "    ║   🦀  Sea-Claw Installer  v2.0.0         ║"
     echo "    ║                                           ║"
     echo "    ║   Sovereign AI Agent Platform             ║"
-    echo "    ║   Pure C11 · 50 Tools · Zero Dependencies ║"
+    echo "    ║   Pure C11 · 56 Tools · Zero Dependencies ║"
     echo "    ║                                           ║"
     echo "    ╚═══════════════════════════════════════════╝"
     echo -e "${RESET}"
@@ -287,8 +287,8 @@ make release 2>&1 | tail -3
 BINARY_SIZE=$(ls -lh dist/sea_claw | awk '{print $5}')
 ok "Built: dist/sea_claw (${BINARY_SIZE})"
 
-info "Running 61 tests..."
-make test 2>&1 | grep -E "(passed|failed|Total)" | tail -6
+info "Running 116 tests (10 suites)..."
+make test 2>&1 | grep -E "(passed|failed|Results)" | tail -12
 ok "All tests passed"
 
 info "Installing to /usr/local/bin..."
@@ -514,7 +514,7 @@ case "$LAUNCH_CHOICE" in
     "Launch Sea-Claw TUI (interactive mode)")
         echo ""
         info "Starting Sea-Claw TUI..."
-        echo -e "  ${DIM}Type /help for commands, /tools to see all 50 tools${RESET}"
+        echo -e "  ${DIM}Type /help for commands, /tools to see all 56 tools${RESET}"
         echo ""
         exec sea_claw --config "$CONFIG_FILE"
         ;;
@@ -530,6 +530,7 @@ case "$LAUNCH_CHOICE" in
         echo -e "  Run anytime with:"
         echo -e "    ${CYAN}sea_claw${RESET}                              # TUI mode"
         echo -e "    ${CYAN}sea_claw --config $CONFIG_FILE${RESET}"
+        echo -e "    ${CYAN}sea_claw --doctor${RESET}                     # Diagnose config"
         if [[ -n "$TG_TOKEN" ]]; then
         echo -e "    ${CYAN}sea_claw --telegram${RESET}                   # Bot mode"
         fi

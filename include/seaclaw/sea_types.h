@@ -151,10 +151,10 @@ typedef enum {
 
 /* ── Version ──────────────────────────────────────────────── */
 
-#define SEA_VERSION_MAJOR 1
+#define SEA_VERSION_MAJOR 2
 #define SEA_VERSION_MINOR 0
 #define SEA_VERSION_PATCH 0
-#define SEA_VERSION_STRING "1.0.0"
+#define SEA_VERSION_STRING "2.0.0"
 
 /* ── Limits ───────────────────────────────────────────────── */
 
