@@ -10,6 +10,7 @@ test_arena
 test_json
 test_shield
 test_db
+test_config
 
 # Database
 *.db

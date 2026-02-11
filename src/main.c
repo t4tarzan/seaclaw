@@ -15,6 +15,7 @@
 #include "seaclaw/sea_json.h"
 #include "seaclaw/sea_telegram.h"
 #include "seaclaw/sea_db.h"
+#include "seaclaw/sea_config.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,6 +50,8 @@ static SeaTelegram   s_telegram;
 static bool          s_telegram_mode = false;
 static SeaDb*        s_db = NULL;
 static const char*   s_db_path = DEFAULT_DB_PATH;
+static SeaConfig     s_config;
+static const char*   s_config_path = "config.json";
 
 /* ── Signal handler ───────────────────────────────────────── */
 
@@ -294,8 +297,11 @@ int main(int argc, char** argv) {
             tg_chat_id = atoll(argv[++i]);
         } else if (strcmp(argv[i], "--db") == 0 && i + 1 < argc) {
             s_db_path = argv[++i];
+        } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
+            s_config_path = argv[++i];
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             printf("Usage: sea_claw [OPTIONS]\n");
+            printf("  --config <path>     Config file (default: config.json)\n");
             printf("  --telegram <token>  Run as Telegram bot\n");
             printf("  --chat <id>         Restrict to chat ID\n");
             printf("  --db <path>         Database file (default: seaclaw.db)\n");
@@ -315,11 +321,29 @@ int main(int argc, char** argv) {
     printf("\033[2J\033[H");  /* Clear screen */
     printf("%s\n", BANNER);
 
-    /* Initialize arenas */
-    SEA_LOG_INFO("SYSTEM", "Substrate initializing. Arena: %dMB (Fixed).",
-                 ARENA_SIZE / (1024 * 1024));
+    /* Load config (uses a small temporary arena for JSON parsing) */
+    SeaArena cfg_arena;
+    sea_arena_create(&cfg_arena, 8192);
+    sea_config_load(&s_config, s_config_path, &cfg_arena);
 
-    if (sea_arena_create(&s_session_arena, ARENA_SIZE) != SEA_OK) {
+    /* Config values as fallbacks for CLI args */
+    if (!tg_token && s_config.telegram_token) {
+        tg_token = s_config.telegram_token;
+        s_telegram_mode = true;
+    }
+    if (tg_chat_id == 0 && s_config.telegram_chat_id != 0) {
+        tg_chat_id = s_config.telegram_chat_id;
+    }
+    if (strcmp(s_db_path, DEFAULT_DB_PATH) == 0 && s_config.db_path) {
+        s_db_path = s_config.db_path;
+    }
+
+    /* Initialize arenas */
+    u32 arena_mb = s_config.arena_size_mb > 0 ? s_config.arena_size_mb : 16;
+    u64 arena_bytes = (u64)arena_mb * 1024 * 1024;
+    SEA_LOG_INFO("SYSTEM", "Substrate initializing. Arena: %uMB (Fixed).", arena_mb);
+
+    if (sea_arena_create(&s_session_arena, arena_bytes) != SEA_OK) {
         SEA_LOG_ERROR("SYSTEM", "Failed to create session arena");
         return 1;
     }
@@ -383,6 +407,7 @@ int main(int argc, char** argv) {
     }
     sea_arena_destroy(&s_request_arena);
     sea_arena_destroy(&s_session_arena);
+    sea_arena_destroy(&cfg_arena);
     SEA_LOG_INFO("SYSTEM", "Goodbye. The Vault stands.");
 
     return ret;

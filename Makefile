@@ -68,7 +68,8 @@ LDFLAGS_RELEASE := -flto -Wl,--as-needed -pie
 CORE_SRC := \
 	src/core/sea_arena.c \
 	src/core/sea_log.c \
-	src/core/sea_db.c
+	src/core/sea_db.c \
+	src/core/sea_config.c
 
 SENSES_SRC := \
 	src/senses/sea_json.c \
@@ -102,6 +103,9 @@ TEST_SHIELD_OBJ := $(TEST_SHIELD_SRC:.c=.o)
 TEST_DB_SRC := tests/test_db.c
 TEST_DB_OBJ := $(TEST_DB_SRC:.c=.o)
 
+TEST_CONFIG_SRC := tests/test_config.c
+TEST_CONFIG_OBJ := $(TEST_CONFIG_SRC:.c=.o)
+
 # ── Output ────────────────────────────────────────────────────
 
 BIN     := sea_claw
@@ -110,6 +114,7 @@ TESTBIN_ARENA  := test_arena
 TESTBIN_JSON   := test_json
 TESTBIN_SHIELD := test_shield
 TESTBIN_DB     := test_db
+TESTBIN_CONFIG := test_config
 
 # ── Targets ───────────────────────────────────────────────────
 
@@ -147,7 +152,7 @@ debug: clean all
 
 # ── Tests ─────────────────────────────────────────────────────
 
-test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB)
+test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG)
 	@echo ""
 	@echo "  Running tests..."
 	@echo "  ────────────────"
@@ -155,6 +160,7 @@ test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB)
 	./$(TESTBIN_JSON)
 	./$(TESTBIN_SHIELD)
 	./$(TESTBIN_DB)
+	./$(TESTBIN_CONFIG)
 	@echo ""
 
 $(TESTBIN_ARENA): $(TEST_ARENA_OBJ) src/core/sea_arena.o src/core/sea_log.o
@@ -169,10 +175,13 @@ $(TESTBIN_SHIELD): $(TEST_SHIELD_OBJ) src/core/sea_log.o src/shield/sea_shield.o
 $(TESTBIN_DB): $(TEST_DB_OBJ) src/core/sea_arena.o src/core/sea_log.o src/core/sea_db.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
+$(TESTBIN_CONFIG): $(TEST_CONFIG_OBJ) src/core/sea_arena.o src/core/sea_log.o src/core/sea_config.o src/senses/sea_json.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
+
 # ── Clean ─────────────────────────────────────────────────────
 
 clean:
-	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB)
+	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG)
 	find src tests -name '*.o' -delete 2>/dev/null || true
 	@echo "  Cleaned."
 
