@@ -863,7 +863,7 @@ int main(int argc, char** argv) {
             } else {
                 printf("    %s \033[33m○ (will be created)\033[0m\n", skills_path);
             }
-            printf("\n  \033[1mTools:\033[0m         53 compiled in\n");
+            printf("\n  \033[1mTools:\033[0m         56 compiled in\n");
             printf("\n  ════════════════════════════════════════\n\n");
             sea_arena_destroy(&da);
             return 0;

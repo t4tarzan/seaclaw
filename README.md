@@ -2,7 +2,9 @@
 
 > *"We stop building software that breaks. We start building logic that survives."*
 
-A zero-dependency AI agent platform written in pure C11. 61 tests. 9,159 lines. 50 tools. No garbage collector. No runtime. No excuses.
+A sovereign AI agent platform written in pure C11. 116 tests. 13,400+ lines. 56 tools. No garbage collector. No runtime. No excuses.
+
+**By [One Convergence](https://oneconvergence.com)** — 25+ years of security & networking infrastructure.
 
 **Docs:** [seaclaw.virtualgpt.cloud](https://seaclaw.virtualgpt.cloud) &nbsp;|&nbsp; **Install:** `curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh | bash`
 
@@ -13,29 +15,35 @@ A zero-dependency AI agent platform written in pure C11. 61 tests. 9,159 lines. 
 Sea-Claw is a sovereign computing engine — a single binary that runs an AI agent with:
 
 - **Arena Allocation** — No malloc, no free, no leaks. Memory is a notebook: write forward, rip out the page.
-- **Zero-Copy JSON Parser** — Parses directly into the input buffer. 7 μs per parse. No copies.
+- **Zero-Copy JSON Parser** — Parses directly into the input buffer. 3 μs per parse. No copies.
 - **Grammar Shield** — Every byte is validated against a charset bitmap before it touches the engine. Shell injection, SQL injection, XSS — all rejected at the byte level in < 1 μs.
+- **Message Bus** — Thread-safe pub/sub bus decouples channels from the AI brain. Multi-channel ready.
+- **Session Management** — Per-channel, per-chat session isolation with LLM-driven auto-summarization.
+- **Long-Term Memory** — Markdown-based memory files: identity, daily notes, bootstrap files. Survives restarts.
+- **Skills System** — Markdown-based plugins loaded from `~/.seaclaw/skills/`. YAML frontmatter + prompt body.
+- **Cron Scheduler** — Persistent background jobs with `@every`, `@once`, and cron expressions. SQLite-backed.
 - **Telegram Bot** — Long-polling Telegram integration. Commands dispatched through the same shield → tool pipeline.
 - **LLM Agent** — Routes natural language to OpenRouter/OpenAI/Gemini/Anthropic/local APIs. Multi-provider fallback chain. Parses tool calls, executes them, loops until done.
-- **Conversation Memory** — Chat history persisted in SQLite. Last 20 messages loaded as context per chat.
-- **Agent-to-Agent (A2A)** — Delegate tasks to remote agents (OpenClaw, Agent-0) via HTTP JSON-RPC. Shield-verified results.
+- **Usage Tracking** — Token consumption per provider, per day. SQLite-persisted audit trail.
+- **Agent-to-Agent (A2A)** — Delegate tasks to remote agents via HTTP JSON-RPC. Shield-verified results.
 - **SQLite Database** — Embedded ledger for config, tasks, trajectory, chat history. Single file, WAL mode.
-- **Static Tool Registry** — 50 tools compiled in. No dynamic loading. No eval. No surprises.
+- **Static Tool Registry** — 56 tools compiled in. No dynamic loading. No eval. No surprises.
 
 ## Architecture
 
 ```
-┌───────────────────────────────────────────────────┐
-│                Sea-Claw Binary                    │
-├──────────┬──────────┬───────────┬────────┬────────┤
-│ Substrate│  Senses  │  Shield   │ Brain  │ Hands  │
-│(Arena,DB)│(JSON,HTTP)│(Grammar) │(Agent) │(Tools) │
-├──────────┴──────────┴───────────┴────────┴────────┤
-│       Config → Event Loop → Memory (SQLite)       │
-├─────────────────────┬─────────────────────────────┤
-│    TUI Mode         │   Telegram Mode (13 cmds)   │
-│  Interactive CLI    │  Long-polling bot + A2A      │
-└─────────────────────┴─────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                    Sea-Claw Binary                       │
+├──────────┬──────────┬──────────┬─────────┬───────────────┤
+│ Substrate│  Senses  │  Shield  │  Brain  │    Hands      │
+│(Arena,DB)│(JSON,HTTP)│(Grammar)│ (Agent) │  (56 Tools)   │
+├──────────┴──────────┴──────────┴─────────┴───────────────┤
+│  Bus ─── Session ─── Memory ─── Cron ─── Skills ─── A2A │
+├──────────────────────┬───────────────────────────────────┤
+│   TUI Mode           │  Telegram Mode + Gateway Mode    │
+│  Interactive CLI      │  Long-polling bot + Bus-based    │
+│  --doctor / --onboard │  Multi-channel ready             │
+└──────────────────────┴───────────────────────────────────┘
 ```
 
 ### The Five Pillars
@@ -46,7 +54,14 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 | **Senses** | `src/senses/` | JSON parser, HTTP client |
 | **Shield** | `src/shield/` | Byte-level grammar validation |
 | **Brain** | `src/brain/` | LLM agent loop with tool calling + fallback |
-| **Hands** | `src/hands/` | 50 tools: file, shell, web, search, math, text, hash, DNS, SSL, weather, and more |
+| **Hands** | `src/hands/` | 56 tools: file, shell, web, search, math, text, hash, DNS, SSL, weather, cron, memory, spawn |
+| **Bus** | `src/bus/` | Thread-safe message bus (pub/sub, inbound/outbound queues) |
+| **Channels** | `src/channels/` | Channel abstraction + Telegram channel adapter |
+| **Session** | `src/session/` | Per-chat session isolation, LLM-driven summarization |
+| **Memory** | `src/memory/` | Long-term markdown memory: identity, daily notes, bootstrap files |
+| **Cron** | `src/cron/` | Persistent job scheduler (@every, @once, cron expressions) |
+| **Skills** | `src/skills/` | Markdown-based skill plugins with YAML frontmatter |
+| **Usage** | `src/usage/` | Token tracking per provider, per day |
 | **A2A** | `src/a2a/` | Agent-to-Agent delegation protocol |
 | **Telegram** | `src/telegram/` | Bot interface (Mirror pattern) |
 
@@ -58,7 +73,7 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh | bash
 ```
 
-This installs dependencies, clones the repo, builds a release binary, runs all 61 tests, and installs `sea_claw` to `/usr/local/bin`. Supports apt, dnf, yum, pacman, and apk.
+This installs dependencies, clones the repo, builds a release binary, runs all 116 tests, and installs `sea_claw` to `/usr/local/bin`. Supports apt, dnf, yum, pacman, and apk.
 
 ### Manual Build
 
@@ -72,11 +87,17 @@ cd seaclaw
 # Debug build (with AddressSanitizer)
 make
 
-# Release build (~82KB stripped binary)
+# Release build
 make release
 
-# Run tests (61 tests, 5 suites)
+# Run tests (116 tests, 10 suites)
 make test
+
+# First-run setup wizard
+./sea_claw --onboard
+
+# Diagnose config
+./sea_claw --doctor
 
 # Install to /usr/local/bin
 sudo make install
@@ -91,7 +112,7 @@ sudo make install
 Commands:
 - `/help` — Full command reference
 - `/status` — System status (arena usage, uptime, tools)
-- `/tools` — List registered tools
+- `/tools` — List all 56 registered tools
 - `/exec <tool> <args>` — Execute a tool
 - `/tasks` — List tasks from database
 - `/quit` — Exit
@@ -125,7 +146,7 @@ Config fields: `telegram_token`, `telegram_chat_id`, `db_path`, `log_level`, `ar
 |---------|-------------|
 | `/help` | Full command reference |
 | `/status` | System status & memory |
-| `/tools` | List all 50 tools |
+| `/tools` | List all 56 tools |
 | `/task list` | List tasks |
 | `/task create <title>` | Create a task |
 | `/task done <id>` | Complete a task |
@@ -144,13 +165,18 @@ Or just type naturally — the bot uses AI + tools with conversation memory.
 ## Test Results
 
 ```
-Sea-Claw Arena Tests:    9 passed  (1M allocs in 30ms, 1M resets in 26ms)
-Sea-Claw JSON Tests:    17 passed  (10K parses in 55ms, 5.5 μs/parse)
-Sea-Claw Shield Tests:  19 passed  (100K validations in 94ms, 0.94 μs/check)
-Sea-Claw DB Tests:      10 passed  (SQLite WAL mode, CRUD + persistence)
-Sea-Claw Config Tests:   6 passed  (JSON loader, defaults, partial configs)
+Sea-Claw Arena Tests:     9 passed  (1M allocs in 30ms, 1M resets in 7ms)
+Sea-Claw JSON Tests:     17 passed  (100K parses in 300ms, 3 μs/parse)
+Sea-Claw Shield Tests:   19 passed  (1M validations in 557ms, 0.6 μs/check)
+Sea-Claw DB Tests:       10 passed  (SQLite WAL mode, CRUD + persistence)
+Sea-Claw Config Tests:    6 passed  (JSON loader, defaults, partial configs)
+Sea-Claw Bus Tests:      10 passed  (pub/sub, FIFO, concurrent, timeout)
+Sea-Claw Session Tests:  11 passed  (isolation, history, summarization, DB)
+Sea-Claw Memory Tests:    8 passed  (workspace, bootstrap, daily notes, context)
+Sea-Claw Cron Tests:     14 passed  (schedule parsing, CRUD, tick, one-shot)
+Sea-Claw Skill Tests:    12 passed  (parse, load, registry, enable/disable)
 ─────────────────────────────────────────────
-Total: 61 passed, 0 failed
+Total: 116 passed, 0 failed (10 suites)
 ```
 
 ## Security Model
@@ -182,6 +208,13 @@ seaclaw/
 │   ├── sea_config.h       # JSON config loader
 │   ├── sea_agent.h        # LLM agent loop + fallback
 │   ├── sea_a2a.h          # Agent-to-Agent protocol
+│   ├── sea_bus.h          # Thread-safe message bus
+│   ├── sea_channel.h      # Channel abstraction
+│   ├── sea_session.h      # Session management
+│   ├── sea_memory.h       # Long-term memory
+│   ├── sea_cron.h         # Cron scheduler
+│   ├── sea_skill.h        # Skills plugin system
+│   ├── sea_usage.h        # Usage tracking
 │   ├── sea_telegram.h     # Telegram bot interface
 │   └── sea_tools.h        # Static tool registry
 ├── src/
@@ -189,11 +222,18 @@ seaclaw/
 │   ├── senses/            # I/O: JSON parser, HTTP client
 │   ├── shield/            # Grammar validation
 │   ├── brain/             # LLM agent with tool calling + fallback
+│   ├── bus/               # Thread-safe pub/sub message bus
+│   ├── channels/          # Channel manager + Telegram adapter
+│   ├── session/           # Per-chat session isolation
+│   ├── memory/            # Long-term markdown memory
+│   ├── cron/              # Persistent job scheduler
+│   ├── skills/            # Markdown skill plugins
+│   ├── usage/             # Token usage tracking
 │   ├── a2a/               # Agent-to-Agent delegation protocol
 │   ├── telegram/          # Telegram bot
-│   ├── hands/             # Tool registry + 50 implementations
+│   ├── hands/             # Tool registry + 56 implementations
 │   └── main.c             # Event loop + config + agent wiring
-├── tests/                 # 61 tests across 5 suites
+├── tests/                 # 116 tests across 10 suites
 ├── config/                # Example config files
 ├── Makefile               # Build system
 └── dist/                  # Release binary
@@ -211,19 +251,22 @@ seaclaw/
 
 | Metric | Value |
 |--------|-------|
-| Total source lines | 9,159 |
-| Source files | 74 |
+| Total source lines | 13,400+ |
+| Source files | 95 |
 | External dependencies | libcurl, libsqlite3 |
 | C standard | C11 |
-| Tests | 61 (5 suites, all passing) |
-| Tools | 50 (file, shell, web, text, data, hash, DNS, SSL, weather, math, and more) |
-| Binary size | ~82KB stripped |
+| Tests | 116 (10 suites, all passing) |
+| Tools | 56 (file, shell, web, search, text, data, hash, DNS, SSL, weather, math, cron, memory, spawn, message) |
+| Binary size | ~3 MB (debug), ~1.5 MB (release) |
+| Startup time | < 1 ms |
+| Peak memory | ~16 MB (idle) |
 | Telegram commands | 15 |
-| JSON parse speed | 5.4 μs/parse |
-| Shield check speed | 0.97 μs/check |
-| Arena alloc speed | 11 ns/alloc |
+| JSON parse speed | 3 μs/parse |
+| Shield check speed | 0.6 μs/check |
+| Arena alloc speed | 30 ns/alloc |
 | LLM providers | OpenRouter, OpenAI, Gemini, Anthropic, Local |
 | Fallback chain | Up to 4 providers |
+| CLI commands | `--doctor`, `--onboard`, `--gateway` |
 | A2A protocol | HTTP JSON-RPC with Shield verification |
 | Documentation | [seaclaw.virtualgpt.cloud](https://seaclaw.virtualgpt.cloud) |
 

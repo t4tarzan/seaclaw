@@ -203,6 +203,9 @@ TEST_CRON_OBJ := $(TEST_CRON_SRC:.c=.o)
 TEST_SKILL_SRC := tests/test_skill.c
 TEST_SKILL_OBJ := $(TEST_SKILL_SRC:.c=.o)
 
+TEST_BENCH_SRC := tests/test_bench.c
+TEST_BENCH_OBJ := $(TEST_BENCH_SRC:.c=.o)
+
 # ── Output ────────────────────────────────────────────────────
 
 BIN     := sea_claw
@@ -217,6 +220,7 @@ TESTBIN_SESSION := test_session
 TESTBIN_MEMORY  := test_memory
 TESTBIN_CRON    := test_cron
 TESTBIN_SKILL   := test_skill
+TESTBIN_BENCH   := test_bench
 
 # ── Targets ───────────────────────────────────────────────────
 
@@ -300,10 +304,13 @@ $(TESTBIN_CRON): $(TEST_CRON_OBJ) src/cron/sea_cron.o src/bus/sea_bus.o src/core
 $(TESTBIN_SKILL): $(TEST_SKILL_OBJ) src/skills/sea_skill.o src/core/sea_arena.o src/core/sea_log.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
+$(TESTBIN_BENCH): $(TEST_BENCH_OBJ) src/core/sea_arena.o src/core/sea_log.o src/senses/sea_json.o src/shield/sea_shield.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
+
 # ── Clean ─────────────────────────────────────────────────────
 
 clean:
-	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL)
+	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_BENCH)
 	find src tests -name '*.o' -delete 2>/dev/null || true
 	@echo "  Cleaned."
 
