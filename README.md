@@ -2,7 +2,7 @@
 
 > *"We stop building software that breaks. We start building logic that survives."*
 
-A zero-dependency AI agent platform written in pure C11. 61 tests. 4,699 lines. No garbage collector. No runtime. No excuses.
+A zero-dependency AI agent platform written in pure C11. 61 tests. 4,938 lines. No garbage collector. No runtime. No excuses.
 
 ---
 
@@ -18,7 +18,7 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 - **Conversation Memory** — Chat history persisted in SQLite. Last 20 messages loaded as context per chat.
 - **Agent-to-Agent (A2A)** — Delegate tasks to remote agents (OpenClaw, Agent-0) via HTTP JSON-RPC. Shield-verified results.
 - **SQLite Database** — Embedded ledger for config, tasks, trajectory, chat history. Single file, WAL mode.
-- **Static Tool Registry** — 7 tools compiled in. No dynamic loading. No eval. No surprises.
+- **Static Tool Registry** — 8 tools compiled in. No dynamic loading. No eval. No surprises.
 
 ## Architecture
 
@@ -44,7 +44,7 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 | **Senses** | `src/senses/` | JSON parser, HTTP client |
 | **Shield** | `src/shield/` | Byte-level grammar validation |
 | **Brain** | `src/brain/` | LLM agent loop with tool calling + fallback |
-| **Hands** | `src/hands/` | 7 tools: file, shell, web, task, echo, status |
+| **Hands** | `src/hands/` | 8 tools: file, shell, web, task, db_query, echo, status |
 | **A2A** | `src/a2a/` | Agent-to-Agent delegation protocol |
 | **Telegram** | `src/telegram/` | Bot interface (Mirror pattern) |
 
@@ -109,7 +109,7 @@ Config fields: `telegram_token`, `telegram_chat_id`, `db_path`, `log_level`, `ar
 |---------|-------------|
 | `/help` | Full command reference |
 | `/status` | System status & memory |
-| `/tools` | List all 7 tools |
+| `/tools` | List all 8 tools |
 | `/task list` | List tasks |
 | `/task create <title>` | Create a task |
 | `/task done <id>` | Complete a task |
@@ -119,6 +119,7 @@ Config fields: `telegram_token`, `telegram_chat_id`, `db_path`, `log_level`, `ar
 | `/web <url>` | Fetch URL content |
 | `/session clear` | Clear chat history |
 | `/model` | Show current LLM model |
+| `/audit` | View recent audit trail |
 | `/delegate <url> <task>` | Delegate to remote agent |
 | `/exec <tool> <args>` | Raw tool execution |
 
@@ -174,7 +175,7 @@ seaclaw/
 │   ├── brain/             # LLM agent with tool calling + fallback
 │   ├── a2a/               # Agent-to-Agent delegation protocol
 │   ├── telegram/          # Telegram bot
-│   ├── hands/             # Tool registry + 7 implementations
+│   ├── hands/             # Tool registry + 8 implementations
 │   └── main.c             # Event loop + config + agent wiring
 ├── tests/                 # 61 tests across 5 suites
 ├── config/                # Example config files
@@ -194,12 +195,12 @@ seaclaw/
 
 | Metric | Value |
 |--------|-------|
-| Total source lines | 4,699 |
+| Total source lines | 4,938 |
 | External dependencies | libcurl, libsqlite3 |
 | C standard | C11 |
 | Tests | 61 |
-| Tools | 7 (file_read, file_write, shell_exec, web_fetch, task_manage, echo, system_status) |
-| Telegram commands | 13 |
+| Tools | 8 (file_read, file_write, shell_exec, web_fetch, task_manage, db_query, echo, system_status) |
+| Telegram commands | 15 |
 | JSON parse speed | 5.5 μs/parse |
 | Shield check speed | 0.94 μs/check |
 | Arena alloc speed | 30 ns/alloc |

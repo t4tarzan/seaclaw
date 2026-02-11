@@ -292,6 +292,7 @@ static SeaError telegram_handler(i64 chat_id, SeaSlice text,
                 "/web <url> — Fetch URL content\n"
                 "/session clear — Clear chat history\n"
                 "/model — Show current LLM model\n"
+                "/audit — View recent audit trail\n"
                 "/delegate <url> <task> — Delegate to remote agent\n"
                 "/exec <tool> <args> — Raw tool exec\n\n"
                 "Or just type naturally — I'll use AI + tools.");
