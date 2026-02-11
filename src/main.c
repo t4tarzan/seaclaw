@@ -30,6 +30,7 @@
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 /* ── Constants ────────────────────────────────────────────── */
 
@@ -808,6 +809,114 @@ int main(int argc, char** argv) {
             s_db_path = argv[++i];
         } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
             s_config_path = argv[++i];
+        } else if (strcmp(argv[i], "--doctor") == 0) {
+            /* ── Doctor: diagnose config, providers, channels ──── */
+            load_dotenv(".env");
+            SeaArena da; sea_arena_create(&da, 8192);
+            sea_config_load(&s_config, s_config_path, &da);
+            printf("\n\033[1m  Sea-Claw Doctor\033[0m\n");
+            printf("  ════════════════════════════════════════\n\n");
+            printf("  \033[1mBinary:\033[0m        %s\n", SEA_VERSION_STRING);
+            printf("  \033[1mConfig file:\033[0m   %s\n", s_config_path);
+            printf("  \033[1mDB path:\033[0m       %s\n", s_config.db_path ? s_config.db_path : s_db_path);
+            printf("  \033[1mArena size:\033[0m    %u MB\n", s_config.arena_size_mb > 0 ? s_config.arena_size_mb : 16);
+            printf("\n  \033[1mLLM Provider:\033[0m\n");
+            printf("    provider:  %s %s\n", s_config.llm_provider ? s_config.llm_provider : "(not set)",
+                   s_config.llm_provider ? "\033[32m✓\033[0m" : "\033[31m✗\033[0m");
+            printf("    api_key:   %s\n", (s_config.llm_api_key && *s_config.llm_api_key) ? "\033[32m✓ set\033[0m" : "\033[31m✗ missing\033[0m");
+            printf("    model:     %s\n", s_config.llm_model ? s_config.llm_model : "(default)");
+            printf("    api_url:   %s\n", s_config.llm_api_url ? s_config.llm_api_url : "(default)");
+            printf("\n  \033[1mTelegram:\033[0m\n");
+            const char* tg_env = getenv("TELEGRAM_BOT_TOKEN");
+            bool tg_ok = (s_config.telegram_token && *s_config.telegram_token) || (tg_env && *tg_env);
+            printf("    token:     %s\n", tg_ok ? "\033[32m✓ set\033[0m" : "\033[33m○ not set (optional)\033[0m");
+            printf("    chat_id:   %lld %s\n", (long long)s_config.telegram_chat_id,
+                   s_config.telegram_chat_id ? "\033[32m✓\033[0m" : "\033[33m○\033[0m");
+            printf("\n  \033[1mFallbacks:\033[0m     %u configured\n", s_config.llm_fallback_count);
+            printf("\n  \033[1mEnvironment:\033[0m\n");
+            const char* env_keys[] = {"OPENAI_API_KEY","ANTHROPIC_API_KEY","GEMINI_API_KEY","OPENROUTER_API_KEY","TELEGRAM_BOT_TOKEN","EXA_API_KEY"};
+            for (int e = 0; e < 6; e++) {
+                const char* v = getenv(env_keys[e]);
+                printf("    %-24s %s\n", env_keys[e], (v && *v) ? "\033[32m✓\033[0m" : "\033[90m-\033[0m");
+            }
+            printf("\n  \033[1mDatabase:\033[0m\n");
+            SeaDb* ddb = NULL;
+            const char* dbp = s_config.db_path ? s_config.db_path : s_db_path;
+            if (sea_db_open(&ddb, dbp) == SEA_OK) {
+                printf("    status:    \033[32m✓ OK\033[0m (%s)\n", dbp);
+                sea_db_close(ddb);
+            } else {
+                printf("    status:    \033[31m✗ cannot open\033[0m (%s)\n", dbp);
+            }
+            printf("\n  \033[1mSkills dir:\033[0m\n");
+            char skills_path[256];
+            const char* home = getenv("HOME");
+            snprintf(skills_path, sizeof(skills_path), "%s/.seaclaw/skills", home ? home : "/tmp");
+            struct stat sst;
+            if (stat(skills_path, &sst) == 0) {
+                printf("    %s \033[32m✓\033[0m\n", skills_path);
+            } else {
+                printf("    %s \033[33m○ (will be created)\033[0m\n", skills_path);
+            }
+            printf("\n  \033[1mTools:\033[0m         53 compiled in\n");
+            printf("\n  ════════════════════════════════════════\n\n");
+            sea_arena_destroy(&da);
+            return 0;
+        } else if (strcmp(argv[i], "--onboard") == 0) {
+            /* ── Onboard: interactive first-run setup ──────────── */
+            printf("\n\033[1m  Sea-Claw Onboard Wizard\033[0m\n");
+            printf("  ════════════════════════════════════════\n\n");
+            printf("  This wizard creates a config.json for you.\n\n");
+            char ob_provider[64] = {0}, ob_key[256] = {0}, ob_model[128] = {0};
+            char ob_tg_token[256] = {0}, ob_tg_chat[32] = {0};
+            printf("  LLM Provider (openai/anthropic/gemini/openrouter/local): ");
+            fflush(stdout);
+            if (fgets(ob_provider, sizeof(ob_provider), stdin)) {
+                ob_provider[strcspn(ob_provider, "\n")] = '\0';
+            }
+            printf("  API Key: ");
+            fflush(stdout);
+            if (fgets(ob_key, sizeof(ob_key), stdin)) {
+                ob_key[strcspn(ob_key, "\n")] = '\0';
+            }
+            printf("  Model (or press Enter for default): ");
+            fflush(stdout);
+            if (fgets(ob_model, sizeof(ob_model), stdin)) {
+                ob_model[strcspn(ob_model, "\n")] = '\0';
+            }
+            printf("  Telegram Bot Token (or press Enter to skip): ");
+            fflush(stdout);
+            if (fgets(ob_tg_token, sizeof(ob_tg_token), stdin)) {
+                ob_tg_token[strcspn(ob_tg_token, "\n")] = '\0';
+            }
+            if (ob_tg_token[0]) {
+                printf("  Telegram Chat ID: ");
+                fflush(stdout);
+                if (fgets(ob_tg_chat, sizeof(ob_tg_chat), stdin)) {
+                    ob_tg_chat[strcspn(ob_tg_chat, "\n")] = '\0';
+                }
+            }
+            /* Write config.json */
+            FILE* cf = fopen("config.json", "w");
+            if (cf) {
+                fprintf(cf, "{\n");
+                fprintf(cf, "  \"llm_provider\": \"%s\",\n", ob_provider);
+                fprintf(cf, "  \"llm_api_key\": \"%s\",\n", ob_key);
+                if (ob_model[0]) fprintf(cf, "  \"llm_model\": \"%s\",\n", ob_model);
+                if (ob_tg_token[0]) {
+                    fprintf(cf, "  \"telegram_token\": \"%s\",\n", ob_tg_token);
+                    if (ob_tg_chat[0]) fprintf(cf, "  \"telegram_chat_id\": %s,\n", ob_tg_chat);
+                }
+                fprintf(cf, "  \"arena_size_mb\": 16,\n");
+                fprintf(cf, "  \"db_path\": \"seaclaw.db\"\n");
+                fprintf(cf, "}\n");
+                fclose(cf);
+                printf("\n  \033[32m✓\033[0m Config written to config.json\n");
+                printf("  Run \033[1m./sea_claw\033[0m to start!\n\n");
+            } else {
+                printf("\n  \033[31m✗\033[0m Failed to write config.json\n\n");
+            }
+            return 0;
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             printf("Usage: sea_claw [OPTIONS]\n");
             printf("  --config <path>     Config file (default: config.json)\n");
@@ -815,6 +924,8 @@ int main(int argc, char** argv) {
             printf("  --telegram <token>  Run as Telegram bot (legacy direct mode)\n");
             printf("  --chat <id>         Restrict to chat ID\n");
             printf("  --db <path>         Database file (default: seaclaw.db)\n");
+            printf("  --doctor            Diagnose config, providers, channels\n");
+            printf("  --onboard           Interactive first-run setup wizard\n");
             printf("  -h, --help          Show this help\n");
             return 0;
         }
