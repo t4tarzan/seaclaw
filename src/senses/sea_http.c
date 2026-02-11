@@ -45,7 +45,7 @@ static size_t write_callback(char* ptr, size_t size, size_t nmemb, void* userdat
 /* ── Internal request ─────────────────────────────────────── */
 
 static SeaError do_request(const char* url, const char* method,
-                           SeaSlice* post_body,
+                           SeaSlice* post_body, const char* auth_header,
                            SeaArena* arena, SeaHttpResponse* resp) {
     CURL* curl = curl_easy_init();
     if (!curl) return SEA_ERR_CONNECT;
@@ -62,11 +62,18 @@ static SeaError do_request(const char* url, const char* method,
 
     struct curl_slist* headers = NULL;
 
+    if (auth_header) {
+        headers = curl_slist_append(headers, auth_header);
+    }
+
     if (strcmp(method, "POST") == 0 && post_body) {
         headers = curl_slist_append(headers, "Content-Type: application/json");
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, (const char*)post_body->data);
         curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)post_body->len);
+    }
+
+    if (headers) {
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     }
 
     CURLcode res = curl_easy_perform(curl);
@@ -98,12 +105,20 @@ static SeaError do_request(const char* url, const char* method,
 SeaError sea_http_get(const char* url, SeaArena* arena, SeaHttpResponse* resp) {
     if (!url || !arena || !resp) return SEA_ERR_IO;
     SEA_LOG_DEBUG("HTTP", "GET %s", url);
-    return do_request(url, "GET", NULL, arena, resp);
+    return do_request(url, "GET", NULL, NULL, arena, resp);
 }
 
 SeaError sea_http_post_json(const char* url, SeaSlice json_body,
                             SeaArena* arena, SeaHttpResponse* resp) {
     if (!url || !arena || !resp) return SEA_ERR_IO;
     SEA_LOG_DEBUG("HTTP", "POST %s (%u bytes)", url, json_body.len);
-    return do_request(url, "POST", &json_body, arena, resp);
+    return do_request(url, "POST", &json_body, NULL, arena, resp);
+}
+
+SeaError sea_http_post_json_auth(const char* url, SeaSlice json_body,
+                                 const char* auth_header,
+                                 SeaArena* arena, SeaHttpResponse* resp) {
+    if (!url || !arena || !resp) return SEA_ERR_IO;
+    SEA_LOG_DEBUG("HTTP", "POST %s (%u bytes, auth)", url, json_body.len);
+    return do_request(url, "POST", &json_body, auth_header, arena, resp);
 }

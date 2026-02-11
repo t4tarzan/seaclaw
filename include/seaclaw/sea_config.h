@@ -11,7 +11,11 @@
  *   "telegram_chat_id": 99887766,
  *   "db_path": "seaclaw.db",
  *   "log_level": "info",
- *   "arena_size_mb": 16
+ *   "arena_size_mb": 16,
+ *   "llm_provider": "openai",
+ *   "llm_api_key": "sk-...",
+ *   "llm_model": "gpt-4o-mini",
+ *   "llm_api_url": ""
  * }
  */
 
@@ -32,6 +36,12 @@ typedef struct {
     /* System */
     const char* log_level;
     u32         arena_size_mb;
+
+    /* LLM Agent */
+    const char* llm_provider;  /* "openai", "anthropic", "local" */
+    const char* llm_api_key;
+    const char* llm_model;
+    const char* llm_api_url;   /* Override base URL (for local) */
 
     /* State */
     bool        loaded;

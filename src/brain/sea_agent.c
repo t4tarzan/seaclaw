@@ -1,0 +1,477 @@
+/*
+ * sea_agent.c — The Brain
+ *
+ * Routes natural language to LLM APIs (OpenAI-compatible),
+ * parses tool call responses, executes tools, loops until done.
+ * All allocations in arena.
+ */
+
+#include "seaclaw/sea_agent.h"
+#include "seaclaw/sea_http.h"
+#include "seaclaw/sea_json.h"
+#include "seaclaw/sea_tools.h"
+#include "seaclaw/sea_shield.h"
+#include "seaclaw/sea_log.h"
+
+#include <stdio.h>
+#include <string.h>
+
+/* ── Defaults ─────────────────────────────────────────────── */
+
+static const char* DEFAULT_SYSTEM_PROMPT =
+    "You are Sea-Claw, a sovereign AI agent running as a 39KB C binary. "
+    "You have access to tools. When you need to use a tool, respond with "
+    "a JSON tool_call block. Available tools:\n";
+
+void sea_agent_defaults(SeaAgentConfig* cfg) {
+    if (!cfg) return;
+    if (!cfg->api_url) {
+        switch (cfg->provider) {
+            case SEA_LLM_OPENAI:    cfg->api_url = "https://api.openai.com/v1/chat/completions"; break;
+            case SEA_LLM_ANTHROPIC: cfg->api_url = "https://api.anthropic.com/v1/messages"; break;
+            case SEA_LLM_LOCAL:     cfg->api_url = "http://localhost:11434/v1/chat/completions"; break;
+        }
+    }
+    if (!cfg->model) {
+        switch (cfg->provider) {
+            case SEA_LLM_OPENAI:    cfg->model = "gpt-4o-mini"; break;
+            case SEA_LLM_ANTHROPIC: cfg->model = "claude-3-haiku-20240307"; break;
+            case SEA_LLM_LOCAL:     cfg->model = "llama3"; break;
+        }
+    }
+    if (cfg->max_tokens == 0) cfg->max_tokens = 1024;
+    if (cfg->temperature == 0.0) cfg->temperature = 0.7;
+    if (cfg->max_tool_rounds == 0) cfg->max_tool_rounds = 5;
+}
+
+void sea_agent_init(SeaAgentConfig* cfg) {
+    sea_agent_defaults(cfg);
+    SEA_LOG_INFO("AGENT", "Provider: %s, Model: %s",
+        cfg->provider == SEA_LLM_OPENAI ? "OpenAI" :
+        cfg->provider == SEA_LLM_ANTHROPIC ? "Anthropic" : "Local",
+        cfg->model);
+}
+
+/* ── String builder helpers ───────────────────────────────── */
+
+typedef struct {
+    char*     buf;
+    u32       len;
+    u32       cap;
+    SeaArena* arena;
+} StrBuf;
+
+static StrBuf strbuf_new(SeaArena* arena, u32 initial_cap) {
+    StrBuf sb = { .arena = arena, .len = 0, .cap = initial_cap };
+    sb.buf = (char*)sea_arena_alloc(arena, initial_cap, 1);
+    if (sb.buf) sb.buf[0] = '\0';
+    return sb;
+}
+
+static void strbuf_append(StrBuf* sb, const char* s) {
+    if (!sb->buf || !s) return;
+    u32 slen = (u32)strlen(s);
+    if (sb->len + slen >= sb->cap) {
+        u32 new_cap = sb->cap * 2;
+        while (new_cap <= sb->len + slen) new_cap *= 2;
+        char* new_buf = (char*)sea_arena_alloc(sb->arena, new_cap, 1);
+        if (!new_buf) return;
+        memcpy(new_buf, sb->buf, sb->len);
+        sb->buf = new_buf;
+        sb->cap = new_cap;
+    }
+    memcpy(sb->buf + sb->len, s, slen);
+    sb->len += slen;
+    sb->buf[sb->len] = '\0';
+}
+
+/* ── JSON escape ──────────────────────────────────────────── */
+
+static void strbuf_append_json_escaped(StrBuf* sb, const char* s) {
+    if (!s) return;
+    for (const char* p = s; *p; p++) {
+        switch (*p) {
+            case '"':  strbuf_append(sb, "\\\""); break;
+            case '\\': strbuf_append(sb, "\\\\"); break;
+            case '\n': strbuf_append(sb, "\\n");  break;
+            case '\r': strbuf_append(sb, "\\r");  break;
+            case '\t': strbuf_append(sb, "\\t");  break;
+            default: {
+                char c[2] = { *p, '\0' };
+                strbuf_append(sb, c);
+            }
+        }
+    }
+}
+
+/* ── Build system prompt with tool descriptions ───────────── */
+
+const char* sea_agent_build_system_prompt(SeaArena* arena) {
+    StrBuf sb = strbuf_new(arena, 2048);
+    strbuf_append(&sb, DEFAULT_SYSTEM_PROMPT);
+
+    u32 count = sea_tools_count();
+    for (u32 i = 0; i < count; i++) {
+        const SeaTool* t = sea_tool_by_id(i);
+        if (t) {
+            strbuf_append(&sb, "- ");
+            strbuf_append(&sb, t->name);
+            strbuf_append(&sb, ": ");
+            strbuf_append(&sb, t->description);
+            strbuf_append(&sb, "\n");
+        }
+    }
+
+    strbuf_append(&sb,
+        "\nTo call a tool, include this exact JSON in your response:\n"
+        "{\"tool_call\": {\"name\": \"tool_name\", \"args\": \"arguments\"}}\n"
+        "After the tool result is returned, provide your final answer to the user.");
+
+    return sb.buf;
+}
+
+/* ── Build OpenAI-compatible request JSON ─────────────────── */
+
+static const char* build_request_json(SeaAgentConfig* cfg,
+                                       const char* system_prompt,
+                                       SeaChatMsg* history, u32 history_count,
+                                       const char* user_input,
+                                       SeaArena* arena) {
+    StrBuf sb = strbuf_new(arena, 4096);
+
+    strbuf_append(&sb, "{\"model\":\"");
+    strbuf_append(&sb, cfg->model);
+    strbuf_append(&sb, "\",\"max_tokens\":");
+
+    char num[32];
+    snprintf(num, sizeof(num), "%u", cfg->max_tokens);
+    strbuf_append(&sb, num);
+
+    snprintf(num, sizeof(num), ",\"temperature\":%.1f", cfg->temperature);
+    strbuf_append(&sb, num);
+
+    strbuf_append(&sb, ",\"messages\":[");
+
+    /* System message */
+    strbuf_append(&sb, "{\"role\":\"system\",\"content\":\"");
+    strbuf_append_json_escaped(&sb, system_prompt);
+    strbuf_append(&sb, "\"}");
+
+    /* History */
+    for (u32 i = 0; i < history_count; i++) {
+        strbuf_append(&sb, ",{\"role\":\"");
+        switch (history[i].role) {
+            case SEA_ROLE_USER:      strbuf_append(&sb, "user"); break;
+            case SEA_ROLE_ASSISTANT: strbuf_append(&sb, "assistant"); break;
+            case SEA_ROLE_TOOL:      strbuf_append(&sb, "user"); break; /* tool results as user */
+            default:                 strbuf_append(&sb, "user"); break;
+        }
+        strbuf_append(&sb, "\",\"content\":\"");
+        strbuf_append_json_escaped(&sb, history[i].content);
+        strbuf_append(&sb, "\"}");
+    }
+
+    /* Current user message */
+    strbuf_append(&sb, ",{\"role\":\"user\",\"content\":\"");
+    strbuf_append_json_escaped(&sb, user_input);
+    strbuf_append(&sb, "\"}]}");
+
+    return sb.buf;
+}
+
+/* ── Parse tool call from response ────────────────────────── */
+
+typedef struct {
+    bool        has_tool_call;
+    const char* tool_name;
+    const char* tool_args;
+    const char* text;
+} ParsedResponse;
+
+static ParsedResponse parse_llm_response(const char* body, u32 body_len,
+                                          SeaArena* arena) {
+    ParsedResponse pr = { .has_tool_call = false, .tool_name = NULL,
+                          .tool_args = NULL, .text = NULL };
+
+    SeaSlice input = { .data = (const u8*)body, .len = body_len };
+    SeaJsonValue root;
+    if (sea_json_parse(input, arena, &root) != SEA_OK) {
+        SEA_LOG_ERROR("AGENT", "Failed to parse LLM response JSON");
+        return pr;
+    }
+
+    /* Extract choices[0].message.content */
+    const SeaJsonValue* choices = sea_json_get(&root, "choices");
+    if (!choices || choices->type != SEA_JSON_ARRAY || choices->array.count == 0) {
+        SEA_LOG_ERROR("AGENT", "No choices in LLM response");
+        return pr;
+    }
+
+    const SeaJsonValue* first = &choices->array.items[0];
+    const SeaJsonValue* message = sea_json_get(first, "message");
+    if (!message) {
+        SEA_LOG_ERROR("AGENT", "No message in choice");
+        return pr;
+    }
+
+    SeaSlice content_slice = sea_json_get_string(message, "content");
+    if (content_slice.len == 0) {
+        pr.text = "";
+        return pr;
+    }
+
+    /* Copy content to null-terminated string */
+    char* content = (char*)sea_arena_alloc(arena, content_slice.len + 1, 1);
+    if (!content) return pr;
+    memcpy(content, content_slice.data, content_slice.len);
+    content[content_slice.len] = '\0';
+    pr.text = content;
+
+    /* Check if content contains a tool_call JSON block */
+    const char* tc_start = strstr(content, "{\"tool_call\"");
+    if (!tc_start) tc_start = strstr(content, "{ \"tool_call\"");
+    if (tc_start) {
+        /* Find the matching closing brace */
+        int depth = 0;
+        const char* p = tc_start;
+        const char* end = NULL;
+        for (; *p; p++) {
+            if (*p == '{') depth++;
+            else if (*p == '}') {
+                depth--;
+                if (depth == 0) { end = p + 1; break; }
+            }
+        }
+
+        if (end) {
+            u32 tc_len = (u32)(end - tc_start);
+            SeaSlice tc_input = { .data = (const u8*)tc_start, .len = tc_len };
+            SeaJsonValue tc_root;
+            if (sea_json_parse(tc_input, arena, &tc_root) == SEA_OK) {
+                const SeaJsonValue* tc = sea_json_get(&tc_root, "tool_call");
+                if (tc) {
+                    SeaSlice name_sl = sea_json_get_string(tc, "name");
+                    SeaSlice args_sl = sea_json_get_string(tc, "args");
+
+                    if (name_sl.len > 0) {
+                        char* name = (char*)sea_arena_alloc(arena, name_sl.len + 1, 1);
+                        if (name) {
+                            memcpy(name, name_sl.data, name_sl.len);
+                            name[name_sl.len] = '\0';
+                            pr.tool_name = name;
+                        }
+
+                        char* args = (char*)sea_arena_alloc(arena, args_sl.len + 1, 1);
+                        if (args) {
+                            memcpy(args, args_sl.data, args_sl.len);
+                            args[args_sl.len] = '\0';
+                            pr.tool_args = args;
+                        }
+
+                        pr.has_tool_call = true;
+                    }
+                }
+            }
+        }
+    }
+
+    return pr;
+}
+
+/* ── Build auth header ────────────────────────────────────── */
+
+static const char* build_auth_header(SeaAgentConfig* cfg, SeaArena* arena) {
+    if (!cfg->api_key) return NULL;
+
+    const char* prefix;
+    if (cfg->provider == SEA_LLM_ANTHROPIC) {
+        prefix = "x-api-key: ";
+    } else {
+        prefix = "Authorization: Bearer ";
+    }
+
+    u32 plen = (u32)strlen(prefix);
+    u32 klen = (u32)strlen(cfg->api_key);
+    char* hdr = (char*)sea_arena_alloc(arena, plen + klen + 1, 1);
+    if (!hdr) return NULL;
+    memcpy(hdr, prefix, plen);
+    memcpy(hdr + plen, cfg->api_key, klen);
+    hdr[plen + klen] = '\0';
+    return hdr;
+}
+
+/* ── Main agent chat loop ─────────────────────────────────── */
+
+SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
+                              SeaChatMsg* history, u32 history_count,
+                              const char* user_input,
+                              SeaArena* arena) {
+    SeaAgentResult result = { .text = NULL, .tool_calls = 0,
+                              .tokens_used = 0, .error = SEA_OK };
+
+    if (!cfg || !user_input || !arena) {
+        result.error = SEA_ERR_CONFIG;
+        return result;
+    }
+
+    if (!cfg->api_key && cfg->provider != SEA_LLM_LOCAL) {
+        result.error = SEA_ERR_CONFIG;
+        result.text = "No API key configured. Set telegram_token in config.json or use --config.";
+        SEA_LOG_ERROR("AGENT", "No API key configured");
+        return result;
+    }
+
+    /* Build system prompt with tool descriptions */
+    const char* system_prompt = cfg->system_prompt
+        ? cfg->system_prompt
+        : sea_agent_build_system_prompt(arena);
+
+    /* Build auth header */
+    const char* auth_hdr = build_auth_header(cfg, arena);
+
+    /* Accumulate tool messages for multi-round */
+    #define MAX_EXTRA_MSGS 16
+    SeaChatMsg extra_msgs[MAX_EXTRA_MSGS];
+    u32 extra_count = 0;
+
+    const char* current_input = user_input;
+
+    for (u32 round = 0; round < cfg->max_tool_rounds; round++) {
+        /* Build combined history: original + extra tool messages */
+        u32 total_hist = history_count + extra_count;
+        SeaChatMsg* combined = NULL;
+        if (total_hist > 0) {
+            combined = (SeaChatMsg*)sea_arena_alloc(arena,
+                total_hist * sizeof(SeaChatMsg), 8);
+            if (combined) {
+                if (history_count > 0)
+                    memcpy(combined, history, history_count * sizeof(SeaChatMsg));
+                if (extra_count > 0)
+                    memcpy(combined + history_count, extra_msgs,
+                           extra_count * sizeof(SeaChatMsg));
+            }
+        }
+
+        /* Build request JSON */
+        const char* req_json = build_request_json(cfg, system_prompt,
+            combined, total_hist, current_input, arena);
+        if (!req_json) {
+            result.error = SEA_ERR_OOM;
+            result.text = "Failed to build request";
+            return result;
+        }
+
+        SEA_LOG_INFO("AGENT", "Round %u: sending %u bytes to %s",
+                     round + 1, (u32)strlen(req_json), cfg->api_url);
+
+        /* Make HTTP request */
+        SeaSlice body = { .data = (const u8*)req_json, .len = (u32)strlen(req_json) };
+        SeaHttpResponse resp;
+        SeaError err;
+
+        if (auth_hdr) {
+            err = sea_http_post_json_auth(cfg->api_url, body, auth_hdr, arena, &resp);
+        } else {
+            err = sea_http_post_json(cfg->api_url, body, arena, &resp);
+        }
+
+        if (err != SEA_OK) {
+            result.error = err;
+            result.text = "Failed to reach LLM API";
+            SEA_LOG_ERROR("AGENT", "HTTP request failed: %d", err);
+            return result;
+        }
+
+        if (resp.status_code != 200) {
+            result.error = SEA_ERR_IO;
+            /* Copy error body for debugging */
+            char* err_text = (char*)sea_arena_alloc(arena, resp.body.len + 64, 1);
+            if (err_text) {
+                snprintf(err_text, resp.body.len + 64,
+                         "LLM API error (HTTP %d): %.*s",
+                         resp.status_code, (int)resp.body.len, (const char*)resp.body.data);
+                result.text = err_text;
+            } else {
+                result.text = "LLM API error";
+            }
+            SEA_LOG_ERROR("AGENT", "HTTP %d from LLM", resp.status_code);
+            return result;
+        }
+
+        /* Parse response */
+        ParsedResponse pr = parse_llm_response(
+            (const char*)resp.body.data, resp.body.len, arena);
+
+        if (!pr.has_tool_call) {
+            /* No tool call — we have the final answer */
+            result.text = pr.text ? pr.text : "";
+            return result;
+        }
+
+        /* Tool call requested */
+        result.tool_calls++;
+        SEA_LOG_INFO("AGENT", "Tool call: %s(%s)",
+                     pr.tool_name ? pr.tool_name : "?",
+                     pr.tool_args ? pr.tool_args : "");
+
+        /* Validate tool name through shield */
+        if (pr.tool_name) {
+            SeaSlice name_slice = {
+                .data = (const u8*)pr.tool_name,
+                .len = (u32)strlen(pr.tool_name)
+            };
+            SeaShieldResult sr = sea_shield_validate(name_slice, SEA_GRAMMAR_COMMAND);
+            if (!sr.valid) {
+                result.text = "Tool name rejected by Shield.";
+                result.error = SEA_ERR_INVALID_INPUT;
+                return result;
+            }
+        }
+
+        /* Execute tool */
+        SeaSlice tool_args = {
+            .data = (const u8*)(pr.tool_args ? pr.tool_args : ""),
+            .len = pr.tool_args ? (u32)strlen(pr.tool_args) : 0
+        };
+        SeaSlice tool_output;
+        SeaError tool_err = sea_tool_exec(pr.tool_name, tool_args, arena, &tool_output);
+
+        /* Build tool result message for next round */
+        if (extra_count < MAX_EXTRA_MSGS - 1) {
+            /* Add assistant message with tool call */
+            extra_msgs[extra_count].role = SEA_ROLE_ASSISTANT;
+            extra_msgs[extra_count].content = pr.text;
+            extra_msgs[extra_count].tool_call_id = NULL;
+            extra_msgs[extra_count].tool_name = NULL;
+            extra_count++;
+
+            /* Add tool result */
+            char* tool_result = (char*)sea_arena_alloc(arena, tool_output.len + 128, 1);
+            if (tool_result) {
+                if (tool_err == SEA_OK) {
+                    snprintf(tool_result, tool_output.len + 128,
+                             "Tool '%s' returned: %.*s",
+                             pr.tool_name,
+                             (int)tool_output.len, (const char*)tool_output.data);
+                } else {
+                    snprintf(tool_result, 128,
+                             "Tool '%s' failed with error %d",
+                             pr.tool_name, tool_err);
+                }
+                extra_msgs[extra_count].role = SEA_ROLE_TOOL;
+                extra_msgs[extra_count].content = tool_result;
+                extra_msgs[extra_count].tool_call_id = NULL;
+                extra_msgs[extra_count].tool_name = pr.tool_name;
+                extra_count++;
+            }
+        }
+
+        /* Next round uses the tool result as context */
+        current_input = "Please provide your final answer based on the tool result above.";
+    }
+
+    /* Exhausted tool rounds */
+    result.text = "Reached maximum tool call rounds.";
+    result.error = SEA_ERR_TIMEOUT;
+    return result;
+}

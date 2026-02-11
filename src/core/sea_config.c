@@ -100,6 +100,26 @@ SeaError sea_config_load(SeaConfig* cfg, const char* path, SeaArena* arena) {
 
     cfg->arena_size_mb = (u32)sea_json_get_number(&root, "arena_size_mb", 0.0);
 
+    _dst = NULL;
+    sv = sea_json_get_string(&root, "llm_provider");
+    SLICE_TO_CSTR(sv);
+    if (_dst) cfg->llm_provider = _dst;
+
+    _dst = NULL;
+    sv = sea_json_get_string(&root, "llm_api_key");
+    SLICE_TO_CSTR(sv);
+    if (_dst) cfg->llm_api_key = _dst;
+
+    _dst = NULL;
+    sv = sea_json_get_string(&root, "llm_model");
+    SLICE_TO_CSTR(sv);
+    if (_dst) cfg->llm_model = _dst;
+
+    _dst = NULL;
+    sv = sea_json_get_string(&root, "llm_api_url");
+    SLICE_TO_CSTR(sv);
+    if (_dst) cfg->llm_api_url = _dst;
+
     #undef SLICE_TO_CSTR
 
     /* Fill defaults for anything not specified */
@@ -120,5 +140,9 @@ void sea_config_print(const SeaConfig* cfg) {
     printf("    db_path:          %s\n", cfg->db_path ? cfg->db_path : "(default)");
     printf("    log_level:        %s\n", cfg->log_level ? cfg->log_level : "info");
     printf("    arena_size_mb:    %u\n", cfg->arena_size_mb);
+    printf("    llm_provider:     %s\n", cfg->llm_provider ? cfg->llm_provider : "(not set)");
+    printf("    llm_api_key:      %s\n", cfg->llm_api_key ? "***set***" : "(not set)");
+    printf("    llm_model:        %s\n", cfg->llm_model ? cfg->llm_model : "(default)");
+    printf("    llm_api_url:      %s\n", cfg->llm_api_url ? cfg->llm_api_url : "(default)");
     printf("\n");
 }

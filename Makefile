@@ -81,6 +81,9 @@ SHIELD_SRC := \
 TELEGRAM_SRC := \
 	src/telegram/sea_telegram.c
 
+BRAIN_SRC := \
+	src/brain/sea_agent.c
+
 HANDS_SRC := \
 	src/hands/sea_tools.c \
 	src/hands/impl/tool_echo.c \
@@ -88,7 +91,7 @@ HANDS_SRC := \
 
 MAIN_SRC := src/main.c
 
-ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(HANDS_SRC) $(MAIN_SRC)
+ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(HANDS_SRC) $(MAIN_SRC)
 ALL_OBJ := $(ALL_SRC:.c=.o)
 
 TEST_ARENA_SRC := tests/test_arena.c

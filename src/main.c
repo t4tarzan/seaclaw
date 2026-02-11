@@ -16,6 +16,7 @@
 #include "seaclaw/sea_telegram.h"
 #include "seaclaw/sea_db.h"
 #include "seaclaw/sea_config.h"
+#include "seaclaw/sea_agent.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,6 +53,7 @@ static SeaDb*        s_db = NULL;
 static const char*   s_db_path = DEFAULT_DB_PATH;
 static SeaConfig     s_config;
 static const char*   s_config_path = "config.json";
+static SeaAgentConfig s_agent_cfg;
 
 /* ── Signal handler ───────────────────────────────────────── */
 
@@ -185,11 +187,25 @@ static void dispatch_command(const char* input) {
 
         printf("  \033[36m[BRAIN]\033[0m Processing: \"%s\"\n", input);
 
-        /* Execute echo tool as placeholder for now */
-        SeaSlice output;
-        SeaError err = sea_tool_exec("echo", input_slice, &s_request_arena, &output);
-        if (err == SEA_OK) {
-            printf("  \033[32m[HANDS]\033[0m Echo: %.*s\n", (int)output.len, (const char*)output.data);
+        if (s_agent_cfg.api_key || s_agent_cfg.provider == SEA_LLM_LOCAL) {
+            /* Route through LLM agent */
+            SeaAgentResult ar = sea_agent_chat(&s_agent_cfg, NULL, 0,
+                                               input, &s_request_arena);
+            if (ar.error == SEA_OK && ar.text) {
+                printf("\n  %s\n", ar.text);
+                if (ar.tool_calls > 0) {
+                    printf("  \033[33m(%u tool call%s)\033[0m\n",
+                           ar.tool_calls, ar.tool_calls > 1 ? "s" : "");
+                }
+            } else {
+                printf("  \033[31m[ERROR]\033[0m %s\n",
+                       ar.text ? ar.text : "Agent failed");
+            }
+        } else {
+            /* No LLM configured — echo as fallback */
+            (void)input_slice;
+            printf("  \033[33m[BRAIN]\033[0m No LLM configured. Set llm_api_key in config.json\n");
+            printf("  \033[37m[ECHO]\033[0m %s\n", input);
         }
         u64 t1 = sea_log_elapsed_ms();
         printf("  \033[37m[CORE]\033[0m Arena reset. (%lums)\n\n", (unsigned long)(t1 - t0));
@@ -363,6 +379,21 @@ int main(int argc, char** argv) {
     } else {
         SEA_LOG_WARN("DB", "Running without database.");
     }
+
+    /* Initialize agent */
+    memset(&s_agent_cfg, 0, sizeof(s_agent_cfg));
+    if (s_config.llm_provider) {
+        if (strcmp(s_config.llm_provider, "anthropic") == 0)
+            s_agent_cfg.provider = SEA_LLM_ANTHROPIC;
+        else if (strcmp(s_config.llm_provider, "local") == 0)
+            s_agent_cfg.provider = SEA_LLM_LOCAL;
+        else
+            s_agent_cfg.provider = SEA_LLM_OPENAI;
+    }
+    s_agent_cfg.api_key = s_config.llm_api_key;
+    s_agent_cfg.api_url = s_config.llm_api_url;
+    s_agent_cfg.model   = s_config.llm_model;
+    sea_agent_init(&s_agent_cfg);
 
     SEA_LOG_INFO("SHIELD", "Grammar Filter: ACTIVE.");
 
