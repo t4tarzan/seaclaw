@@ -2,7 +2,9 @@
 
 > *"We stop building software that breaks. We start building logic that survives."*
 
-A zero-dependency AI agent platform written in pure C11. 61 tests. 9,100+ lines. 50 tools. No garbage collector. No runtime. No excuses.
+A zero-dependency AI agent platform written in pure C11. 61 tests. 9,159 lines. 50 tools. No garbage collector. No runtime. No excuses.
+
+**Docs:** [seaclaw.virtualgpt.cloud](https://seaclaw.virtualgpt.cloud) &nbsp;|&nbsp; **Install:** `curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh | bash`
 
 ---
 
@@ -48,22 +50,36 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 | **A2A** | `src/a2a/` | Agent-to-Agent delegation protocol |
 | **Telegram** | `src/telegram/` | Bot interface (Mirror pattern) |
 
-## Quick Start
+## Install
 
-### Build
+### One-Line Install (Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh | bash
+```
+
+This installs dependencies, clones the repo, builds a release binary, runs all 61 tests, and installs `sea_claw` to `/usr/local/bin`. Supports apt, dnf, yum, pacman, and apk.
+
+### Manual Build
 
 ```bash
 # Requirements: gcc, make, libcurl4-openssl-dev, libsqlite3-dev
 sudo apt install build-essential libcurl4-openssl-dev libsqlite3-dev
 
+git clone https://github.com/t4tarzan/seaclaw.git
+cd seaclaw
+
 # Debug build (with AddressSanitizer)
 make
 
-# Release build (39KB stripped binary)
+# Release build (~82KB stripped binary)
 make release
 
-# Run tests (61 tests)
+# Run tests (61 tests, 5 suites)
 make test
+
+# Install to /usr/local/bin
+sudo make install
 ```
 
 ### Run — Interactive Mode
@@ -175,7 +191,7 @@ seaclaw/
 │   ├── brain/             # LLM agent with tool calling + fallback
 │   ├── a2a/               # Agent-to-Agent delegation protocol
 │   ├── telegram/          # Telegram bot
-│   ├── hands/             # Tool registry + 8 implementations
+│   ├── hands/             # Tool registry + 50 implementations
 │   └── main.c             # Event loop + config + agent wiring
 ├── tests/                 # 61 tests across 5 suites
 ├── config/                # Example config files
@@ -195,18 +211,21 @@ seaclaw/
 
 | Metric | Value |
 |--------|-------|
-| Total source lines | 4,938 |
+| Total source lines | 9,159 |
+| Source files | 74 |
 | External dependencies | libcurl, libsqlite3 |
 | C standard | C11 |
-| Tests | 61 |
-| Tools | 8 (file_read, file_write, shell_exec, web_fetch, task_manage, db_query, echo, system_status) |
+| Tests | 61 (5 suites, all passing) |
+| Tools | 50 (file, shell, web, text, data, hash, DNS, SSL, weather, math, and more) |
+| Binary size | ~82KB stripped |
 | Telegram commands | 15 |
-| JSON parse speed | 5.5 μs/parse |
-| Shield check speed | 0.94 μs/check |
-| Arena alloc speed | 30 ns/alloc |
-| LLM providers | OpenAI, Anthropic, Local (Ollama/LM Studio) |
+| JSON parse speed | 5.4 μs/parse |
+| Shield check speed | 0.97 μs/check |
+| Arena alloc speed | 11 ns/alloc |
+| LLM providers | OpenRouter, OpenAI, Gemini, Anthropic, Local |
 | Fallback chain | Up to 4 providers |
 | A2A protocol | HTTP JSON-RPC with Shield verification |
+| Documentation | [seaclaw.virtualgpt.cloud](https://seaclaw.virtualgpt.cloud) |
 
 ## License
 
