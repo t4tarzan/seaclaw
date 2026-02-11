@@ -50,6 +50,17 @@ extern SeaError tool_json_query(SeaSlice args, SeaArena* arena, SeaSlice* output
 extern SeaError tool_http_request(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_string_replace(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_calendar(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_checksum_file(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_file_search(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_uptime(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_ip_info(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_whois_lookup(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_ssl_check(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_json_to_csv(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_weather(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_unit_convert(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_password_gen(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_count_lines(SeaSlice args, SeaArena* arena, SeaSlice* output);
 
 /* ── The Static Registry ──────────────────────────────────── */
 
@@ -93,6 +104,17 @@ static const SeaTool s_registry[] = {
     {37, "http_request",  "HTTP request. Args: <GET|POST|HEAD> <url> [body]",      tool_http_request },
     {38, "string_replace","Find/replace. Args: <find>|||<replace>|||<text>",        tool_string_replace },
     {39, "calendar",      "Calendar/dates. Args: [month year|weekday|diff]",        tool_calendar },
+    {40, "checksum_file", "File checksum. Args: <filepath>",                       tool_checksum_file },
+    {41, "file_search",   "Find files by name. Args: <pattern> [directory]",        tool_file_search },
+    {42, "uptime",        "System uptime and load. Args: (none)",                  tool_uptime },
+    {43, "ip_info",       "IP geolocation. Args: [ip_address]",                    tool_ip_info },
+    {44, "whois_lookup",  "Domain WHOIS. Args: <domain>",                          tool_whois_lookup },
+    {45, "ssl_check",     "SSL certificate info. Args: <domain>",                  tool_ssl_check },
+    {46, "json_to_csv",   "JSON array to CSV. Args: <json_array>",                 tool_json_to_csv },
+    {47, "weather",       "Current weather. Args: <city>",                          tool_weather },
+    {48, "unit_convert",  "Unit conversion. Args: <val> <from> <to>",              tool_unit_convert },
+    {49, "password_gen",  "Generate password. Args: [length] [-n no symbols]",      tool_password_gen },
+    {50, "count_lines",   "Count lines of code. Args: [dir] [ext]",                tool_count_lines },
 };
 
 static const u32 s_registry_count = sizeof(s_registry) / sizeof(s_registry[0]);

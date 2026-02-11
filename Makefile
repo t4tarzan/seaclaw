@@ -127,7 +127,18 @@ HANDS_SRC := \
 	src/hands/impl/tool_json_query.c \
 	src/hands/impl/tool_http_request.c \
 	src/hands/impl/tool_string_replace.c \
-	src/hands/impl/tool_calendar.c
+	src/hands/impl/tool_calendar.c \
+	src/hands/impl/tool_checksum_file.c \
+	src/hands/impl/tool_file_search.c \
+	src/hands/impl/tool_uptime.c \
+	src/hands/impl/tool_ip_info.c \
+	src/hands/impl/tool_whois_lookup.c \
+	src/hands/impl/tool_ssl_check.c \
+	src/hands/impl/tool_json_to_csv.c \
+	src/hands/impl/tool_weather.c \
+	src/hands/impl/tool_unit_convert.c \
+	src/hands/impl/tool_password_gen.c \
+	src/hands/impl/tool_count_lines.c
 
 MAIN_SRC := src/main.c
 
