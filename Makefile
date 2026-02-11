@@ -59,7 +59,7 @@ CFLAGS_RELEASE := $(CFLAGS_BASE) $(ARCH_FLAGS) -O3 -march=native -flto \
 CFLAGS := $(CFLAGS_DEBUG)
 
 # Linker
-LDFLAGS := -lm -lcurl -lsqlite3
+LDFLAGS := -lm -lcurl -lsqlite3 -lpthread
 LDFLAGS_DEBUG := -fsanitize=address,undefined
 LDFLAGS_RELEASE := -flto -Wl,--as-needed -pie
 
@@ -86,6 +86,13 @@ BRAIN_SRC := \
 
 A2A_SRC := \
 	src/a2a/sea_a2a.c
+
+BUS_SRC := \
+	src/bus/sea_bus.c
+
+CHANNEL_SRC := \
+	src/channels/sea_channel.c \
+	src/channels/channel_telegram.c
 
 HANDS_SRC := \
 	src/hands/sea_tools.c \
@@ -142,7 +149,7 @@ HANDS_SRC := \
 
 MAIN_SRC := src/main.c
 
-ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(A2A_SRC) $(HANDS_SRC) $(MAIN_SRC)
+ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(A2A_SRC) $(BUS_SRC) $(CHANNEL_SRC) $(HANDS_SRC) $(MAIN_SRC)
 ALL_OBJ := $(ALL_SRC:.c=.o)
 
 TEST_ARENA_SRC := tests/test_arena.c
@@ -160,6 +167,9 @@ TEST_DB_OBJ := $(TEST_DB_SRC:.c=.o)
 TEST_CONFIG_SRC := tests/test_config.c
 TEST_CONFIG_OBJ := $(TEST_CONFIG_SRC:.c=.o)
 
+TEST_BUS_SRC := tests/test_bus.c
+TEST_BUS_OBJ := $(TEST_BUS_SRC:.c=.o)
+
 # ── Output ────────────────────────────────────────────────────
 
 BIN     := sea_claw
@@ -169,6 +179,7 @@ TESTBIN_JSON   := test_json
 TESTBIN_SHIELD := test_shield
 TESTBIN_DB     := test_db
 TESTBIN_CONFIG := test_config
+TESTBIN_BUS    := test_bus
 
 # ── Targets ───────────────────────────────────────────────────
 
@@ -206,7 +217,7 @@ debug: clean all
 
 # ── Tests ─────────────────────────────────────────────────────
 
-test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG)
+test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS)
 	@echo ""
 	@echo "  Running tests..."
 	@echo "  ────────────────"
@@ -215,6 +226,7 @@ test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN
 	./$(TESTBIN_SHIELD)
 	./$(TESTBIN_DB)
 	./$(TESTBIN_CONFIG)
+	./$(TESTBIN_BUS)
 	@echo ""
 
 $(TESTBIN_ARENA): $(TEST_ARENA_OBJ) src/core/sea_arena.o src/core/sea_log.o
@@ -232,10 +244,13 @@ $(TESTBIN_DB): $(TEST_DB_OBJ) src/core/sea_arena.o src/core/sea_log.o src/core/s
 $(TESTBIN_CONFIG): $(TEST_CONFIG_OBJ) src/core/sea_arena.o src/core/sea_log.o src/core/sea_config.o src/senses/sea_json.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
+$(TESTBIN_BUS): $(TEST_BUS_OBJ) src/bus/sea_bus.o src/core/sea_arena.o src/core/sea_log.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
+
 # ── Clean ─────────────────────────────────────────────────────
 
 clean:
-	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG)
+	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS)
 	find src tests -name '*.o' -delete 2>/dev/null || true
 	@echo "  Cleaned."
 

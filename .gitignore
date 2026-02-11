@@ -53,3 +53,4 @@ config.json
 # Core dumps (root only, not src/core/)
 /core
 /core.*
+test_bus
