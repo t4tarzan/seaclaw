@@ -25,6 +25,16 @@ typedef enum {
 
 /* ── Agent Configuration ──────────────────────────────────── */
 
+/* Fallback provider entry */
+typedef struct {
+    SeaLlmProvider provider;
+    const char*    api_key;
+    const char*    api_url;
+    const char*    model;
+} SeaLlmFallback;
+
+#define SEA_MAX_FALLBACKS 4
+
 typedef struct {
     SeaLlmProvider provider;
     const char*    api_key;
@@ -34,6 +44,10 @@ typedef struct {
     u32            max_tokens;
     f64            temperature;
     u32            max_tool_rounds; /* Max tool-call iterations */
+
+    /* Fallback chain: tried in order if primary fails */
+    SeaLlmFallback fallbacks[SEA_MAX_FALLBACKS];
+    u32            fallback_count;
 } SeaAgentConfig;
 
 /* ── Chat Message ─────────────────────────────────────────── */

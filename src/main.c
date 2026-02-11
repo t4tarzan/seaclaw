@@ -17,6 +17,7 @@
 #include "seaclaw/sea_db.h"
 #include "seaclaw/sea_config.h"
 #include "seaclaw/sea_agent.h"
+#include "seaclaw/sea_a2a.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -291,6 +292,7 @@ static SeaError telegram_handler(i64 chat_id, SeaSlice text,
                 "/web <url> — Fetch URL content\n"
                 "/session clear — Clear chat history\n"
                 "/model — Show current LLM model\n"
+                "/delegate <url> <task> — Delegate to remote agent\n"
                 "/exec <tool> <args> — Raw tool exec\n\n"
                 "Or just type naturally — I'll use AI + tools.");
             return SEA_OK;
@@ -369,6 +371,50 @@ static SeaError telegram_handler(i64 chat_id, SeaSlice text,
                 s_agent_cfg.provider == SEA_LLM_LOCAL ? "local" :
                 s_agent_cfg.provider == SEA_LLM_ANTHROPIC ? "anthropic" : "openai",
                 s_agent_cfg.api_url ? s_agent_cfg.api_url : "(default)");
+            u8* dst = (u8*)sea_arena_push_bytes(arena, buf, (u64)n);
+            if (dst) { response->data = dst; response->len = (u32)n; }
+            return SEA_OK;
+        }
+
+        /* /delegate <endpoint> <task> — delegate task to remote agent */
+        if (text.len > 10 && memcmp(text.data, "/delegate ", 10) == 0) {
+            const char* rest = (const char*)text.data + 10;
+            u32 rlen = text.len - 10;
+            /* Parse: endpoint task_description */
+            u32 i = 0;
+            while (i < rlen && rest[i] != ' ') i++;
+            if (i == 0 || i >= rlen) {
+                *response = SEA_SLICE_LIT("Usage: /delegate <endpoint> <task description>");
+                return SEA_OK;
+            }
+            char* ep = (char*)sea_arena_alloc(arena, i + 1, 1);
+            if (!ep) { *response = SEA_SLICE_LIT("Memory error."); return SEA_ERR_OOM; }
+            memcpy(ep, rest, i); ep[i] = '\0';
+            while (i < rlen && rest[i] == ' ') i++;
+            char* task = (char*)sea_arena_alloc(arena, rlen - i + 1, 1);
+            if (!task) { *response = SEA_SLICE_LIT("Memory error."); return SEA_ERR_OOM; }
+            memcpy(task, rest + i, rlen - i); task[rlen - i] = '\0';
+
+            SeaA2aPeer peer = { .name = ep, .endpoint = ep, .api_key = NULL,
+                                .healthy = false, .last_seen = 0 };
+            SeaA2aRequest req = { .task_id = NULL, .task_desc = task,
+                                  .context = NULL, .timeout_ms = 30000 };
+            SeaA2aResult ar = sea_a2a_delegate(&peer, &req, arena);
+
+            char buf[2048];
+            int n;
+            if (ar.success && ar.output) {
+                n = snprintf(buf, sizeof(buf),
+                    "A2A Result from %s:\n%s\n[%ums, verified=%s]",
+                    ar.agent_name ? ar.agent_name : "unknown",
+                    ar.output,
+                    ar.latency_ms,
+                    ar.verified ? "yes" : "no");
+            } else {
+                n = snprintf(buf, sizeof(buf),
+                    "A2A Delegation failed: %s",
+                    ar.error ? ar.error : "unknown error");
+            }
             u8* dst = (u8*)sea_arena_push_bytes(arena, buf, (u64)n);
             if (dst) { response->data = dst; response->len = (u32)n; }
             return SEA_OK;
@@ -574,6 +620,24 @@ int main(int argc, char** argv) {
     s_agent_cfg.api_key = s_config.llm_api_key;
     s_agent_cfg.api_url = s_config.llm_api_url;
     s_agent_cfg.model   = s_config.llm_model;
+
+    /* Wire fallback providers */
+    s_agent_cfg.fallback_count = 0;
+    for (u32 fi = 0; fi < s_config.llm_fallback_count && fi < SEA_MAX_FALLBACKS; fi++) {
+        SeaLlmFallback* fb = &s_agent_cfg.fallbacks[fi];
+        const char* prov = s_config.llm_fallbacks[fi].provider;
+        if (prov && strcmp(prov, "anthropic") == 0)
+            fb->provider = SEA_LLM_ANTHROPIC;
+        else if (prov && strcmp(prov, "local") == 0)
+            fb->provider = SEA_LLM_LOCAL;
+        else
+            fb->provider = SEA_LLM_OPENAI;
+        fb->api_key = s_config.llm_fallbacks[fi].api_key;
+        fb->api_url = s_config.llm_fallbacks[fi].api_url;
+        fb->model   = s_config.llm_fallbacks[fi].model;
+        s_agent_cfg.fallback_count++;
+    }
+
     sea_agent_init(&s_agent_cfg);
 
     SEA_LOG_INFO("SHIELD", "Grammar Filter: ACTIVE.");

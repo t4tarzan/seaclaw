@@ -15,7 +15,11 @@
  *   "llm_provider": "openai",
  *   "llm_api_key": "sk-...",
  *   "llm_model": "gpt-4o-mini",
- *   "llm_api_url": ""
+ *   "llm_api_url": "",
+ *   "llm_fallbacks": [
+ *     { "provider": "local", "model": "qwen2.5", "api_url": "http://localhost:1234/v1/chat/completions" },
+ *     { "provider": "anthropic", "api_key": "sk-ant-...", "model": "claude-3-haiku-20240307" }
+ *   ]
  * }
  */
 
@@ -42,6 +46,15 @@ typedef struct {
     const char* llm_api_key;
     const char* llm_model;
     const char* llm_api_url;   /* Override base URL (for local) */
+
+    /* LLM Fallbacks (up to 4) */
+    struct {
+        const char* provider;
+        const char* api_key;
+        const char* model;
+        const char* api_url;
+    } llm_fallbacks[4];
+    u32 llm_fallback_count;
 
     /* State */
     bool        loaded;

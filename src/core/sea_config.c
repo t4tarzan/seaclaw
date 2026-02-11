@@ -120,6 +120,40 @@ SeaError sea_config_load(SeaConfig* cfg, const char* path, SeaArena* arena) {
     SLICE_TO_CSTR(sv);
     if (_dst) cfg->llm_api_url = _dst;
 
+    /* Parse fallback providers array */
+    cfg->llm_fallback_count = 0;
+    const SeaJsonValue* fallbacks = sea_json_get(&root, "llm_fallbacks");
+    if (fallbacks && fallbacks->type == SEA_JSON_ARRAY) {
+        u32 max_fb = fallbacks->array.count;
+        if (max_fb > 4) max_fb = 4;
+        for (u32 fi = 0; fi < max_fb; fi++) {
+            const SeaJsonValue* fb = &fallbacks->array.items[fi];
+            if (fb->type != SEA_JSON_OBJECT) continue;
+
+            _dst = NULL;
+            sv = sea_json_get_string(fb, "provider");
+            SLICE_TO_CSTR(sv);
+            cfg->llm_fallbacks[cfg->llm_fallback_count].provider = _dst;
+
+            _dst = NULL;
+            sv = sea_json_get_string(fb, "api_key");
+            SLICE_TO_CSTR(sv);
+            cfg->llm_fallbacks[cfg->llm_fallback_count].api_key = _dst;
+
+            _dst = NULL;
+            sv = sea_json_get_string(fb, "model");
+            SLICE_TO_CSTR(sv);
+            cfg->llm_fallbacks[cfg->llm_fallback_count].model = _dst;
+
+            _dst = NULL;
+            sv = sea_json_get_string(fb, "api_url");
+            SLICE_TO_CSTR(sv);
+            cfg->llm_fallbacks[cfg->llm_fallback_count].api_url = _dst;
+
+            cfg->llm_fallback_count++;
+        }
+    }
+
     #undef SLICE_TO_CSTR
 
     /* Fill defaults for anything not specified */

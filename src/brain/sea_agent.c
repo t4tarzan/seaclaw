@@ -392,37 +392,78 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
         SEA_LOG_INFO("AGENT", "Round %u: sending %u bytes to %s",
                      round + 1, (u32)strlen(req_json), cfg->api_url);
 
-        /* Make HTTP request */
+        /* Make HTTP request — with fallback chain */
         SeaSlice body = { .data = (const u8*)req_json, .len = (u32)strlen(req_json) };
         SeaHttpResponse resp;
-        SeaError err;
+        SeaError err = SEA_ERR_IO;
+        bool got_response = false;
 
+        /* Try primary provider */
         if (auth_hdr) {
             err = sea_http_post_json_auth(cfg->api_url, body, auth_hdr, arena, &resp);
         } else {
             err = sea_http_post_json(cfg->api_url, body, arena, &resp);
         }
-
-        if (err != SEA_OK) {
-            result.error = err;
-            result.text = "Failed to reach LLM API";
-            SEA_LOG_ERROR("AGENT", "HTTP request failed: %d", err);
-            return result;
+        if (err == SEA_OK && resp.status_code == 200) {
+            got_response = true;
+        } else {
+            SEA_LOG_WARN("AGENT", "Primary provider failed (err=%d, http=%d), trying fallbacks...",
+                         err, (err == SEA_OK) ? resp.status_code : 0);
         }
 
-        if (resp.status_code != 200) {
-            result.error = SEA_ERR_IO;
-            /* Copy error body for debugging */
-            char* err_text = (char*)sea_arena_alloc(arena, resp.body.len + 64, 1);
-            if (err_text) {
-                snprintf(err_text, resp.body.len + 64,
-                         "LLM API error (HTTP %d): %.*s",
-                         resp.status_code, (int)resp.body.len, (const char*)resp.body.data);
-                result.text = err_text;
+        /* Try fallback providers */
+        for (u32 fb = 0; fb < cfg->fallback_count && !got_response; fb++) {
+            SeaLlmFallback* f = &cfg->fallbacks[fb];
+
+            /* Build fallback-specific config for request JSON */
+            SeaAgentConfig fb_cfg = *cfg;
+            fb_cfg.provider = f->provider;
+            fb_cfg.api_key  = f->api_key;
+            fb_cfg.api_url  = f->api_url;
+            fb_cfg.model    = f->model;
+            sea_agent_defaults(&fb_cfg);
+
+            const char* fb_json = build_request_json(&fb_cfg, system_prompt,
+                combined, total_hist, current_input, arena);
+            if (!fb_json) continue;
+
+            const char* fb_auth = build_auth_header(&fb_cfg, arena);
+            SeaSlice fb_body = { .data = (const u8*)fb_json, .len = (u32)strlen(fb_json) };
+
+            SEA_LOG_INFO("AGENT", "Fallback %u: trying %s (%s)",
+                         fb + 1, fb_cfg.api_url, fb_cfg.model);
+
+            if (fb_auth) {
+                err = sea_http_post_json_auth(fb_cfg.api_url, fb_body, fb_auth, arena, &resp);
             } else {
-                result.text = "LLM API error";
+                err = sea_http_post_json(fb_cfg.api_url, fb_body, arena, &resp);
             }
-            SEA_LOG_ERROR("AGENT", "HTTP %d from LLM", resp.status_code);
+
+            if (err == SEA_OK && resp.status_code == 200) {
+                got_response = true;
+                SEA_LOG_INFO("AGENT", "Fallback %u succeeded (%s)", fb + 1, fb_cfg.model);
+            } else {
+                SEA_LOG_WARN("AGENT", "Fallback %u failed (err=%d, http=%d)",
+                             fb + 1, err, (err == SEA_OK) ? resp.status_code : 0);
+            }
+        }
+
+        if (!got_response) {
+            result.error = err;
+            if (err == SEA_OK && resp.status_code != 200) {
+                char* err_text = (char*)sea_arena_alloc(arena, resp.body.len + 64, 1);
+                if (err_text) {
+                    snprintf(err_text, resp.body.len + 64,
+                             "LLM API error (HTTP %d): %.*s",
+                             resp.status_code, (int)resp.body.len, (const char*)resp.body.data);
+                    result.text = err_text;
+                } else {
+                    result.text = "LLM API error";
+                }
+            } else {
+                result.text = "All LLM providers failed";
+            }
+            SEA_LOG_ERROR("AGENT", "All providers exhausted");
             return result;
         }
 
@@ -432,6 +473,17 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
 
         if (!pr.has_tool_call) {
             /* No tool call — we have the final answer */
+            /* Shield-verify output before returning */
+            if (pr.text && strlen(pr.text) > 0) {
+                SeaSlice out_slice = { .data = (const u8*)pr.text,
+                                       .len = (u32)strlen(pr.text) };
+                if (sea_shield_detect_injection(out_slice)) {
+                    SEA_LOG_WARN("AGENT", "Shield REJECTED LLM output (injection)");
+                    result.text = "[Output rejected by Shield: potential injection detected]";
+                    result.error = SEA_ERR_INVALID_INPUT;
+                    return result;
+                }
+            }
             result.text = pr.text ? pr.text : "";
             return result;
         }
