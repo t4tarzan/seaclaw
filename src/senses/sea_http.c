@@ -108,6 +108,13 @@ SeaError sea_http_get(const char* url, SeaArena* arena, SeaHttpResponse* resp) {
     return do_request(url, "GET", NULL, NULL, arena, resp);
 }
 
+SeaError sea_http_get_auth(const char* url, const char* auth_header,
+                            SeaArena* arena, SeaHttpResponse* resp) {
+    if (!url || !arena || !resp) return SEA_ERR_IO;
+    SEA_LOG_DEBUG("HTTP", "GET %s (auth)", url);
+    return do_request(url, "GET", NULL, auth_header, arena, resp);
+}
+
 SeaError sea_http_post_json(const char* url, SeaSlice json_body,
                             SeaArena* arena, SeaHttpResponse* resp) {
     if (!url || !arena || !resp) return SEA_ERR_IO;

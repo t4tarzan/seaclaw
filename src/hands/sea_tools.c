@@ -64,6 +64,9 @@ extern SeaError tool_count_lines(SeaSlice args, SeaArena* arena, SeaSlice* outpu
 extern SeaError tool_edit_file(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_cron_manage(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_memory_manage(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_web_search(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_spawn(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_message(SeaSlice args, SeaArena* arena, SeaSlice* output);
 
 /* ── The Static Registry ──────────────────────────────────── */
 
@@ -121,6 +124,9 @@ static const SeaTool s_registry[] = {
     {51, "edit_file",     "Edit file. Args: <path>|||<find>|||<replace>",           tool_edit_file },
     {52, "cron_manage",   "Manage cron. Args: list|add|remove|pause|resume",       tool_cron_manage },
     {53, "memory_manage", "Memory. Args: read|write|append|daily|bootstrap",       tool_memory_manage },
+    {54, "web_search",    "Brave web search. Args: <query>",                       tool_web_search },
+    {55, "spawn",         "Spawn sub-agent. Args: <task description>",              tool_spawn },
+    {56, "message",       "Send message. Args: <channel:chat_id> <text>",           tool_message },
 };
 
 static const u32 s_registry_count = sizeof(s_registry) / sizeof(s_registry[0]);

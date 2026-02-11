@@ -106,6 +106,9 @@ CRON_SRC := \
 SKILL_SRC := \
 	src/skills/sea_skill.c
 
+USAGE_SRC := \
+	src/usage/sea_usage.c
+
 HANDS_SRC := \
 	src/hands/sea_tools.c \
 	src/hands/impl/tool_echo.c \
@@ -160,11 +163,14 @@ HANDS_SRC := \
 	src/hands/impl/tool_count_lines.c \
 	src/hands/impl/tool_edit_file.c \
 	src/hands/impl/tool_cron_manage.c \
-	src/hands/impl/tool_memory_manage.c
+	src/hands/impl/tool_memory_manage.c \
+	src/hands/impl/tool_web_search.c \
+	src/hands/impl/tool_spawn.c \
+	src/hands/impl/tool_message.c
 
 MAIN_SRC := src/main.c
 
-ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(A2A_SRC) $(BUS_SRC) $(CHANNEL_SRC) $(SESSION_SRC) $(MEMORY_SRC) $(CRON_SRC) $(SKILL_SRC) $(HANDS_SRC) $(MAIN_SRC)
+ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(A2A_SRC) $(BUS_SRC) $(CHANNEL_SRC) $(SESSION_SRC) $(MEMORY_SRC) $(CRON_SRC) $(SKILL_SRC) $(USAGE_SRC) $(HANDS_SRC) $(MAIN_SRC)
 ALL_OBJ := $(ALL_SRC:.c=.o)
 
 TEST_ARENA_SRC := tests/test_arena.c

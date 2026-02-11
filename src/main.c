@@ -23,6 +23,7 @@
 #include "seaclaw/sea_cron.h"
 #include "seaclaw/sea_memory.h"
 #include "seaclaw/sea_skill.h"
+#include "seaclaw/sea_usage.h"
 #include <pthread.h>
 
 #include <stdio.h>
@@ -62,14 +63,17 @@ SeaDb*               s_db = NULL;
 static const char*   s_db_path = DEFAULT_DB_PATH;
 static SeaConfig     s_config;
 static const char*   s_config_path = "config.json";
-static SeaAgentConfig s_agent_cfg;
+SeaAgentConfig s_agent_cfg;
 static SeaBus        s_bus;
+SeaBus*              s_bus_ptr = NULL;
 static SeaChannelManager s_chan_mgr;
 static SeaCronScheduler  s_cron_inst;
 SeaCronScheduler*        s_cron = NULL;
 static SeaMemory         s_memory_inst;
 SeaMemory*               s_memory = NULL;
 static SeaSkillRegistry  s_skill_reg;
+static SeaUsageTracker   s_usage_inst;
+SeaUsageTracker*         s_usage = NULL;
 
 /* ── Signal handler ───────────────────────────────────────── */
 
@@ -732,6 +736,7 @@ static int run_gateway(const char* tg_token, i64 tg_chat_id) {
         SEA_LOG_ERROR("GATEWAY", "Bus init failed: %s", sea_error_str(err));
         return 1;
     }
+    s_bus_ptr = &s_bus;
 
     /* Initialize channel manager */
     sea_channel_manager_init(&s_chan_mgr, &s_bus);
@@ -1072,6 +1077,12 @@ int main(int argc, char** argv) {
         SEA_LOG_INFO("SKILL", "Skills loaded: %u", sea_skill_count(&s_skill_reg));
     }
 
+    /* Initialize usage tracker */
+    if (sea_usage_init(&s_usage_inst, s_db) == SEA_OK) {
+        s_usage = &s_usage_inst;
+        sea_usage_load(s_usage);
+    }
+
     SEA_LOG_INFO("SHIELD", "Grammar Filter: ACTIVE.");
 
     int ret = 0;
@@ -1113,6 +1124,7 @@ int main(int argc, char** argv) {
 
     printf("\n");
     SEA_LOG_INFO("SYSTEM", "Shutting down...");
+    if (s_usage) { sea_usage_save(s_usage); s_usage = NULL; }
     if (s_cron) { sea_cron_destroy(s_cron); s_cron = NULL; }
     if (s_memory) { sea_memory_destroy(s_memory); s_memory = NULL; }
     sea_skill_destroy(&s_skill_reg);
