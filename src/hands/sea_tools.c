@@ -19,6 +19,7 @@ extern SeaError tool_shell_exec(SeaSlice args, SeaArena* arena, SeaSlice* output
 extern SeaError tool_web_fetch(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_task_manage(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_db_query(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_exa_search(SeaSlice args, SeaArena* arena, SeaSlice* output);
 
 /* ── The Static Registry ──────────────────────────────────── */
 
@@ -31,6 +32,7 @@ static const SeaTool s_registry[] = {
     { 6, "web_fetch",     "Fetch a URL. Args: url",                      tool_web_fetch },
     { 7, "task_manage",   "Manage tasks. Args: list|create|title|desc|done|id", tool_task_manage },
     { 8, "db_query",      "Query database (read-only). Args: SELECT SQL",        tool_db_query },
+    { 9, "exa_search",    "Web search via Exa. Args: search query",              tool_exa_search },
 };
 
 static const u32 s_registry_count = sizeof(s_registry) / sizeof(s_registry[0]);

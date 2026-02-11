@@ -2,7 +2,7 @@
 
 > *"We stop building software that breaks. We start building logic that survives."*
 
-A zero-dependency AI agent platform written in pure C11. 61 tests. 4,938 lines. No garbage collector. No runtime. No excuses.
+A zero-dependency AI agent platform written in pure C11. 61 tests. 5,200+ lines. No garbage collector. No runtime. No excuses.
 
 ---
 
@@ -14,11 +14,11 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 - **Zero-Copy JSON Parser** — Parses directly into the input buffer. 7 μs per parse. No copies.
 - **Grammar Shield** — Every byte is validated against a charset bitmap before it touches the engine. Shell injection, SQL injection, XSS — all rejected at the byte level in < 1 μs.
 - **Telegram Bot** — Long-polling Telegram integration. Commands dispatched through the same shield → tool pipeline.
-- **LLM Agent** — Routes natural language to OpenAI/Anthropic/local APIs. Multi-provider fallback chain. Parses tool calls, executes them, loops until done.
+- **LLM Agent** — Routes natural language to OpenRouter/OpenAI/Gemini/Anthropic/local APIs. Multi-provider fallback chain. Parses tool calls, executes them, loops until done.
 - **Conversation Memory** — Chat history persisted in SQLite. Last 20 messages loaded as context per chat.
 - **Agent-to-Agent (A2A)** — Delegate tasks to remote agents (OpenClaw, Agent-0) via HTTP JSON-RPC. Shield-verified results.
 - **SQLite Database** — Embedded ledger for config, tasks, trajectory, chat history. Single file, WAL mode.
-- **Static Tool Registry** — 8 tools compiled in. No dynamic loading. No eval. No surprises.
+- **Static Tool Registry** — 9 tools compiled in. No dynamic loading. No eval. No surprises.
 
 ## Architecture
 
@@ -44,7 +44,7 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 | **Senses** | `src/senses/` | JSON parser, HTTP client |
 | **Shield** | `src/shield/` | Byte-level grammar validation |
 | **Brain** | `src/brain/` | LLM agent loop with tool calling + fallback |
-| **Hands** | `src/hands/` | 8 tools: file, shell, web, task, db_query, echo, status |
+| **Hands** | `src/hands/` | 9 tools: file, shell, web, exa_search, task, db_query, echo, status |
 | **A2A** | `src/a2a/` | Agent-to-Agent delegation protocol |
 | **Telegram** | `src/telegram/` | Bot interface (Mirror pattern) |
 
@@ -109,7 +109,7 @@ Config fields: `telegram_token`, `telegram_chat_id`, `db_path`, `log_level`, `ar
 |---------|-------------|
 | `/help` | Full command reference |
 | `/status` | System status & memory |
-| `/tools` | List all 8 tools |
+| `/tools` | List all 9 tools |
 | `/task list` | List tasks |
 | `/task create <title>` | Create a task |
 | `/task done <id>` | Complete a task |
