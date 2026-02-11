@@ -65,6 +65,16 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 | **A2A** | `src/a2a/` | Agent-to-Agent delegation protocol |
 | **Telegram** | `src/telegram/` | Bot interface (Mirror pattern) |
 
+## Platform Support
+
+| Platform | Status | Install Method |
+|----------|--------|----------------|
+| **Linux** (Ubuntu, Debian, Fedora, Arch, Alpine) | ✅ Fully supported | One-liner or manual build |
+| **macOS** (Intel & Apple Silicon) | ✅ Supported | Homebrew deps + manual build |
+| **Windows** | 🔜 Coming soon | Use WSL2 for now (see below) |
+
+---
+
 ## Install
 
 ### One-Line Install (Linux)
@@ -73,74 +83,190 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh | bash
 ```
 
-This installs dependencies, clones the repo, builds a release binary, runs all 116 tests, and installs `sea_claw` to `/usr/local/bin`. Supports apt, dnf, yum, pacman, and apk.
+This interactive installer will:
+1. Detect your package manager (apt/dnf/yum/pacman/apk)
+2. Install build dependencies (gcc, make, libcurl, libsqlite3)
+3. Clone the repo and build a release binary (~203KB)
+4. Run all 116 tests across 10 suites
+5. Walk you through LLM provider selection (OpenRouter/OpenAI/Gemini/Anthropic/Local)
+6. Configure API keys and optional fallback providers
+7. Optionally set up a Telegram bot
+8. Generate `config.json` and launch Sea-Claw
 
-### Manual Build
+### macOS
 
 ```bash
-# Requirements: gcc, make, libcurl4-openssl-dev, libsqlite3-dev
+# Install dependencies via Homebrew
+brew install curl sqlite3
+
+# Clone and build
+git clone https://github.com/t4tarzan/seaclaw.git
+cd seaclaw
+make release
+make test
+sudo make install
+```
+
+### Windows (via WSL2)
+
+```powershell
+# 1. Open PowerShell as Administrator and install WSL2
+wsl --install
+
+# 2. Restart your computer, then open Ubuntu from Start Menu
+
+# 3. Inside WSL2, run the one-liner:
+curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh | bash
+```
+
+Native Windows support is on the roadmap. WSL2 provides the full Linux experience with zero compromises.
+
+### Manual Build (any Linux/macOS)
+
+```bash
+# Requirements: gcc (or clang), make, libcurl-dev, libsqlite3-dev
+# Ubuntu/Debian:
 sudo apt install build-essential libcurl4-openssl-dev libsqlite3-dev
+# Fedora/RHEL:
+sudo dnf install gcc make libcurl-devel sqlite-devel
+# Arch:
+sudo pacman -S gcc make curl sqlite
 
 git clone https://github.com/t4tarzan/seaclaw.git
 cd seaclaw
 
-# Debug build (with AddressSanitizer)
-make
-
-# Release build
-make release
-
-# Run tests (116 tests, 10 suites)
-make test
-
-# First-run setup wizard
-./sea_claw --onboard
-
-# Diagnose config
-./sea_claw --doctor
-
-# Install to /usr/local/bin
-sudo make install
+make release          # Optimized binary (~203KB stripped)
+make test             # 116 tests, 10 suites
+sudo make install     # Installs to /usr/local/bin
 ```
 
-### Run — Interactive Mode
+---
+
+## Getting Started — Onboarding
+
+### Step 1: First-Run Setup
 
 ```bash
-./sea_claw
+sea_claw --onboard
 ```
 
-Commands:
-- `/help` — Full command reference
-- `/status` — System status (arena usage, uptime, tools)
-- `/tools` — List all 56 registered tools
-- `/exec <tool> <args>` — Execute a tool
-- `/tasks` — List tasks from database
-- `/quit` — Exit
+The onboard wizard will prompt you for:
+- **LLM Provider** — Choose from OpenRouter (recommended), OpenAI, Google Gemini, Anthropic, or Local (Ollama/LM Studio)
+- **API Key** — Paste your key (hidden input). Get one at:
+  - OpenRouter: https://openrouter.ai/keys
+  - OpenAI: https://platform.openai.com/api-keys
+  - Gemini: https://aistudio.google.com/apikey
+  - Anthropic: https://console.anthropic.com/settings/keys
+- **Model** — Accept the default or specify your own
+- **Telegram Bot** (optional) — Token from [@BotFather](https://t.me/BotFather) + your chat ID
 
-Natural language input is validated through the Shield, then routed to the LLM agent with conversation memory.
+This generates a `config.json` file. You can edit it anytime.
 
-### Configuration
+### Step 2: Verify Your Setup
+
+```bash
+sea_claw --doctor
+```
+
+Doctor checks everything: binary version, config file, LLM provider, API keys, Telegram status, fallback chain, environment variables, database health, skills directory, and tool count. Green ✓ = good, red ✗ = needs attention.
+
+### Step 3: Launch
+
+```bash
+# Interactive TUI mode
+sea_claw
+
+# Or with a specific config
+sea_claw --config ~/.config/seaclaw/config.json
+
+# Telegram bot mode
+sea_claw --telegram YOUR_BOT_TOKEN --chat YOUR_CHAT_ID
+
+# Gateway mode (bus-based, multi-channel ready)
+sea_claw --gateway --telegram YOUR_BOT_TOKEN
+```
+
+### Step 4: Talk to Your Agent
+
+In TUI mode, type commands or natural language:
+
+```
+🦀 > /help                          # Full command reference
+🦀 > /tools                         # List all 56 tools
+🦀 > /exec echo Hello World         # Run a tool directly
+🦀 > /status                        # System status
+🦀 > What files are in /tmp?        # Natural language → AI + tools
+🦀 > Summarize this conversation    # Uses conversation memory
+🦀 > /quit                          # Exit
+```
+
+---
+
+## Configuration
+
+### Config File
 
 ```bash
 cp config/config.example.json config.json
-# Edit config.json with your API keys
-./sea_claw --config config.json
 ```
 
-Config fields: `telegram_token`, `telegram_chat_id`, `db_path`, `log_level`, `arena_size_mb`, `llm_provider` (`openai`/`anthropic`/`local`), `llm_api_key`, `llm_model`, `llm_api_url`, `llm_fallbacks` (array of fallback providers).
-
-### Run — Telegram Bot Mode
-
-```bash
-./sea_claw --telegram YOUR_BOT_TOKEN --chat YOUR_CHAT_ID
+```json
+{
+  "telegram_token": "",
+  "telegram_chat_id": 0,
+  "db_path": "seaclaw.db",
+  "log_level": "info",
+  "arena_size_mb": 16,
+  "llm_provider": "openrouter",
+  "llm_api_key": "sk-or-...",
+  "llm_model": "moonshotai/kimi-k2.5",
+  "llm_api_url": "",
+  "llm_fallbacks": [
+    { "provider": "openai", "model": "gpt-4o-mini" },
+    { "provider": "gemini", "model": "gemini-2.0-flash" }
+  ]
+}
 ```
 
-- `--config <path>` — Config file (default: `config.json`)
-- `--telegram <token>` — Bot token from @BotFather
-- `--chat <id>` — Restrict to a single chat (0 = allow all)
-- `--db <path>` — Database file (default: `seaclaw.db`)
+### Environment Variables
 
-### Telegram Slash Commands
+API keys can also be set via environment variables (override config):
+
+| Variable | Provider |
+|----------|----------|
+| `OPENROUTER_API_KEY` | OpenRouter |
+| `OPENAI_API_KEY` | OpenAI |
+| `GEMINI_API_KEY` | Google Gemini |
+| `ANTHROPIC_API_KEY` | Anthropic |
+| `TELEGRAM_BOT_TOKEN` | Telegram |
+| `EXA_API_KEY` | Exa Search |
+| `BRAVE_API_KEY` | Brave Search |
+
+Or put them in a `.env` file in the working directory — Sea-Claw loads it automatically.
+
+### CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `--config <path>` | Config file (default: `config.json`) |
+| `--db <path>` | Database file (default: `seaclaw.db`) |
+| `--telegram <token>` | Bot token from @BotFather |
+| `--chat <id>` | Restrict to a single chat (0 = allow all) |
+| `--gateway` | Bus-based multi-channel mode |
+| `--doctor` | Diagnostic report |
+| `--onboard` | Interactive setup wizard |
+
+---
+
+## Telegram Bot
+
+### Setup
+
+1. Message [@BotFather](https://t.me/BotFather) on Telegram → `/newbot` → get your token
+2. Message [@userinfobot](https://t.me/userinfobot) → get your chat ID
+3. Run: `sea_claw --telegram YOUR_TOKEN --chat YOUR_CHAT_ID`
+
+### Slash Commands
 
 | Command | Description |
 |---------|-------------|
