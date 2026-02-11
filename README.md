@@ -2,7 +2,7 @@
 
 > *"We stop building software that breaks. We start building logic that survives."*
 
-A zero-dependency AI agent platform written in pure C11. 61 tests. No garbage collector. No runtime. No excuses.
+A zero-dependency AI agent platform written in pure C11. 61 tests. 4,699 lines. No garbage collector. No runtime. No excuses.
 
 ---
 
@@ -14,9 +14,11 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 - **Zero-Copy JSON Parser** — Parses directly into the input buffer. 7 μs per parse. No copies.
 - **Grammar Shield** — Every byte is validated against a charset bitmap before it touches the engine. Shell injection, SQL injection, XSS — all rejected at the byte level in < 1 μs.
 - **Telegram Bot** — Long-polling Telegram integration. Commands dispatched through the same shield → tool pipeline.
-- **LLM Agent** — Routes natural language to OpenAI/Anthropic/local APIs. Parses tool calls, executes them, loops until done.
+- **LLM Agent** — Routes natural language to OpenAI/Anthropic/local APIs. Multi-provider fallback chain. Parses tool calls, executes them, loops until done.
+- **Conversation Memory** — Chat history persisted in SQLite. Last 20 messages loaded as context per chat.
+- **Agent-to-Agent (A2A)** — Delegate tasks to remote agents (OpenClaw, Agent-0) via HTTP JSON-RPC. Shield-verified results.
 - **SQLite Database** — Embedded ledger for config, tasks, trajectory, chat history. Single file, WAL mode.
-- **Static Tool Registry** — Tools are compiled in. No dynamic loading. No eval. No surprises.
+- **Static Tool Registry** — 7 tools compiled in. No dynamic loading. No eval. No surprises.
 
 ## Architecture
 
@@ -27,10 +29,10 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 │ Substrate│  Senses  │  Shield   │ Brain  │ Hands  │
 │(Arena,DB)│(JSON,HTTP)│(Grammar) │(Agent) │(Tools) │
 ├──────────┴──────────┴───────────┴────────┴────────┤
-│            Config → Event Loop (main.c)           │
+│       Config → Event Loop → Memory (SQLite)       │
 ├─────────────────────┬─────────────────────────────┤
-│    TUI Mode         │   Telegram Mode             │
-│  Interactive CLI    │  Long-polling bot            │
+│    TUI Mode         │   Telegram Mode (13 cmds)   │
+│  Interactive CLI    │  Long-polling bot + A2A      │
 └─────────────────────┴─────────────────────────────┘
 ```
 
@@ -41,8 +43,9 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 | **Substrate** | `src/core/` | Arena allocator, logging, SQLite DB, config |
 | **Senses** | `src/senses/` | JSON parser, HTTP client |
 | **Shield** | `src/shield/` | Byte-level grammar validation |
-| **Brain** | `src/brain/` | LLM agent loop with tool calling |
-| **Hands** | `src/hands/` | Static tool registry + implementations |
+| **Brain** | `src/brain/` | LLM agent loop with tool calling + fallback |
+| **Hands** | `src/hands/` | 7 tools: file, shell, web, task, echo, status |
+| **A2A** | `src/a2a/` | Agent-to-Agent delegation protocol |
 | **Telegram** | `src/telegram/` | Bot interface (Mirror pattern) |
 
 ## Quick Start
@@ -70,14 +73,14 @@ make test
 ```
 
 Commands:
-- `/help` — Show help
+- `/help` — Full command reference
 - `/status` — System status (arena usage, uptime, tools)
 - `/tools` — List registered tools
 - `/exec <tool> <args>` — Execute a tool
 - `/tasks` — List tasks from database
 - `/quit` — Exit
 
-Natural language input is validated through the Shield, then routed to the LLM agent.
+Natural language input is validated through the Shield, then routed to the LLM agent with conversation memory.
 
 ### Configuration
 
@@ -87,7 +90,7 @@ cp config/config.example.json config.json
 ./sea_claw --config config.json
 ```
 
-Config fields: `telegram_token`, `telegram_chat_id`, `db_path`, `log_level`, `arena_size_mb`, `llm_provider` (`openai`/`anthropic`/`local`), `llm_api_key`, `llm_model`, `llm_api_url`.
+Config fields: `telegram_token`, `telegram_chat_id`, `db_path`, `log_level`, `arena_size_mb`, `llm_provider` (`openai`/`anthropic`/`local`), `llm_api_key`, `llm_model`, `llm_api_url`, `llm_fallbacks` (array of fallback providers).
 
 ### Run — Telegram Bot Mode
 
@@ -100,7 +103,26 @@ Config fields: `telegram_token`, `telegram_chat_id`, `db_path`, `log_level`, `ar
 - `--chat <id>` — Restrict to a single chat (0 = allow all)
 - `--db <path>` — Database file (default: `seaclaw.db`)
 
-The bot responds to the same commands (`/help`, `/status`, `/tools`, `/exec`).
+### Telegram Slash Commands
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Full command reference |
+| `/status` | System status & memory |
+| `/tools` | List all 7 tools |
+| `/task list` | List tasks |
+| `/task create <title>` | Create a task |
+| `/task done <id>` | Complete a task |
+| `/file read <path>` | Read a file |
+| `/file write <path>\|<content>` | Write a file |
+| `/shell <command>` | Run shell command |
+| `/web <url>` | Fetch URL content |
+| `/session clear` | Clear chat history |
+| `/model` | Show current LLM model |
+| `/delegate <url> <task>` | Delegate to remote agent |
+| `/exec <tool> <args>` | Raw tool execution |
+
+Or just type naturally — the bot uses AI + tools with conversation memory.
 
 ## Test Results
 
@@ -141,16 +163,18 @@ seaclaw/
 │   ├── sea_shield.h       # Grammar filter
 │   ├── sea_db.h           # SQLite embedded database
 │   ├── sea_config.h       # JSON config loader
-│   ├── sea_agent.h        # LLM agent loop
+│   ├── sea_agent.h        # LLM agent loop + fallback
+│   ├── sea_a2a.h          # Agent-to-Agent protocol
 │   ├── sea_telegram.h     # Telegram bot interface
 │   └── sea_tools.h        # Static tool registry
 ├── src/
 │   ├── core/              # Substrate: arena, logging, DB, config
 │   ├── senses/            # I/O: JSON parser, HTTP client
 │   ├── shield/            # Grammar validation
-│   ├── brain/             # LLM agent with tool calling
+│   ├── brain/             # LLM agent with tool calling + fallback
+│   ├── a2a/               # Agent-to-Agent delegation protocol
 │   ├── telegram/          # Telegram bot
-│   ├── hands/             # Tool registry + implementations
+│   ├── hands/             # Tool registry + 7 implementations
 │   └── main.c             # Event loop + config + agent wiring
 ├── tests/                 # 61 tests across 5 suites
 ├── config/                # Example config files
@@ -170,14 +194,18 @@ seaclaw/
 
 | Metric | Value |
 |--------|-------|
-| Total source lines | 4,726 |
+| Total source lines | 4,699 |
 | External dependencies | libcurl, libsqlite3 |
 | C standard | C11 |
 | Tests | 61 |
+| Tools | 7 (file_read, file_write, shell_exec, web_fetch, task_manage, echo, system_status) |
+| Telegram commands | 13 |
 | JSON parse speed | 5.5 μs/parse |
 | Shield check speed | 0.94 μs/check |
 | Arena alloc speed | 30 ns/alloc |
-| LLM providers | OpenAI, Anthropic, Local (Ollama) |
+| LLM providers | OpenAI, Anthropic, Local (Ollama/LM Studio) |
+| Fallback chain | Up to 4 providers |
+| A2A protocol | HTTP JSON-RPC with Shield verification |
 
 ## License
 
