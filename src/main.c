@@ -49,7 +49,7 @@ static SeaArena      s_session_arena;
 static SeaArena      s_request_arena;
 static SeaTelegram   s_telegram;
 static bool          s_telegram_mode = false;
-static SeaDb*        s_db = NULL;
+SeaDb*               s_db = NULL;
 static const char*   s_db_path = DEFAULT_DB_PATH;
 static SeaConfig     s_config;
 static const char*   s_config_path = "config.json";

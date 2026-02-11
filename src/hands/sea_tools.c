@@ -13,12 +13,22 @@
 
 extern SeaError tool_echo(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_system_status(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_file_read(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_file_write(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_shell_exec(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_web_fetch(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_task_manage(SeaSlice args, SeaArena* arena, SeaSlice* output);
 
 /* ── The Static Registry ──────────────────────────────────── */
 
 static const SeaTool s_registry[] = {
-    { 1, "echo",          "Echo text back",                    tool_echo },
-    { 2, "system_status", "Report memory usage and uptime",    tool_system_status },
+    { 1, "echo",          "Echo text back",                              tool_echo },
+    { 2, "system_status", "Report memory usage and uptime",              tool_system_status },
+    { 3, "file_read",     "Read a file. Args: file_path",                tool_file_read },
+    { 4, "file_write",    "Write a file. Args: path|content",            tool_file_write },
+    { 5, "shell_exec",    "Run a shell command. Args: command",          tool_shell_exec },
+    { 6, "web_fetch",     "Fetch a URL. Args: url",                      tool_web_fetch },
+    { 7, "task_manage",   "Manage tasks. Args: list|create|title|desc|done|id", tool_task_manage },
 };
 
 static const u32 s_registry_count = sizeof(s_registry) / sizeof(s_registry[0]);
