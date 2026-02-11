@@ -112,7 +112,22 @@ HANDS_SRC := \
 	src/hands/impl/tool_uuid_gen.c \
 	src/hands/impl/tool_random_gen.c \
 	src/hands/impl/tool_url_parse.c \
-	src/hands/impl/tool_encode_decode.c
+	src/hands/impl/tool_encode_decode.c \
+	src/hands/impl/tool_regex_match.c \
+	src/hands/impl/tool_csv_parse.c \
+	src/hands/impl/tool_diff_text.c \
+	src/hands/impl/tool_grep_text.c \
+	src/hands/impl/tool_wc.c \
+	src/hands/impl/tool_head_tail.c \
+	src/hands/impl/tool_sort_text.c \
+	src/hands/impl/tool_net_info.c \
+	src/hands/impl/tool_cron_parse.c \
+	src/hands/impl/tool_disk_usage.c \
+	src/hands/impl/tool_syslog_read.c \
+	src/hands/impl/tool_json_query.c \
+	src/hands/impl/tool_http_request.c \
+	src/hands/impl/tool_string_replace.c \
+	src/hands/impl/tool_calendar.c
 
 MAIN_SRC := src/main.c
 

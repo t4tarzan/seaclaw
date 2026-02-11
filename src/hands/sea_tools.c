@@ -35,6 +35,21 @@ extern SeaError tool_uuid_gen(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_random_gen(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_url_parse(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_encode_decode(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_regex_match(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_csv_parse(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_diff_text(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_grep_text(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_wc(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_head_tail(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_sort_text(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_net_info(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_cron_parse(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_disk_usage(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_syslog_read(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_json_query(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_http_request(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_string_replace(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_calendar(SeaSlice args, SeaArena* arena, SeaSlice* output);
 
 /* ── The Static Registry ──────────────────────────────────── */
 
@@ -63,6 +78,21 @@ static const SeaTool s_registry[] = {
     {22, "random_gen",    "Random values. Args: <number|string|hex|coin|dice>",   tool_random_gen },
     {23, "url_parse",     "Parse URL components. Args: url",                      tool_url_parse },
     {24, "encode_decode", "Encode/decode. Args: <urlencode|urldecode|htmlencode|htmldecode> text", tool_encode_decode },
+    {25, "regex_match",   "Regex match. Args: <pattern> <text>",                  tool_regex_match },
+    {26, "csv_parse",     "Parse CSV. Args: <headers|count|col_num> <csv>",        tool_csv_parse },
+    {27, "diff_text",     "Compare texts. Args: <text1>|||<text2>",                tool_diff_text },
+    {28, "grep_text",     "Search text/file. Args: <pattern> <text_or_path>",      tool_grep_text },
+    {29, "wc",            "Word count. Args: <filepath_or_text>",                  tool_wc },
+    {30, "head_tail",     "First/last lines. Args: <head|tail> [N] <path_or_text>",tool_head_tail },
+    {31, "sort_text",     "Sort lines. Args: [-r] [-n] [-u] <text>",               tool_sort_text },
+    {32, "net_info",      "Network info. Args: <interfaces|ip|ping|ports>",        tool_net_info },
+    {33, "cron_parse",    "Explain cron. Args: <min hour dom mon dow>",            tool_cron_parse },
+    {34, "disk_usage",    "Disk usage. Args: [path]",                              tool_disk_usage },
+    {35, "syslog_read",   "Read system logs. Args: [lines] [filter]",              tool_syslog_read },
+    {36, "json_query",    "Query JSON by path. Args: <key.path> <json>",           tool_json_query },
+    {37, "http_request",  "HTTP request. Args: <GET|POST|HEAD> <url> [body]",      tool_http_request },
+    {38, "string_replace","Find/replace. Args: <find>|||<replace>|||<text>",        tool_string_replace },
+    {39, "calendar",      "Calendar/dates. Args: [month year|weekday|diff]",        tool_calendar },
 };
 
 static const u32 s_registry_count = sizeof(s_registry) / sizeof(s_registry[0]);
