@@ -54,3 +54,5 @@ config.json
 /core
 /core.*
 test_bus
+test_session
+test_memory
