@@ -283,6 +283,53 @@ SeaError sea_db_chat_log(SeaDb* db, i64 chat_id, const char* role,
     return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
 }
 
+i32 sea_db_chat_history(SeaDb* db, i64 chat_id,
+                        SeaDbChatMsg* out, i32 max_count, SeaArena* arena) {
+    if (!db || !out || !arena || max_count <= 0) return 0;
+
+    sqlite3_stmt* stmt;
+    /* Select last N messages in chronological order using a subquery */
+    const char* sql =
+        "SELECT role, content FROM ("
+        "  SELECT role, content, id FROM chat_history"
+        "  WHERE chat_id = ? ORDER BY id DESC LIMIT ?"
+        ") ORDER BY id ASC";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return 0;
+
+    sqlite3_bind_int64(stmt, 1, chat_id);
+    sqlite3_bind_int(stmt, 2, max_count);
+
+    i32 count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        out[count].role    = arena_strdup(arena,
+                               (const char*)sqlite3_column_text(stmt, 0));
+        out[count].content = arena_strdup(arena,
+                               (const char*)sqlite3_column_text(stmt, 1));
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    return count;
+}
+
+SeaError sea_db_chat_clear(SeaDb* db, i64 chat_id) {
+    if (!db) return SEA_ERR_IO;
+
+    sqlite3_stmt* stmt;
+    const char* sql = "DELETE FROM chat_history WHERE chat_id = ?";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return SEA_ERR_IO;
+
+    sqlite3_bind_int64(stmt, 1, chat_id);
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
+}
+
 /* ── Raw SQL ──────────────────────────────────────────────── */
 
 SeaError sea_db_exec(SeaDb* db, const char* sql) {

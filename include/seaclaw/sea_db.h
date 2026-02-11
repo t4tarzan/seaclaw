@@ -58,8 +58,20 @@ i32 sea_db_task_list(SeaDb* db, const char* status_filter,
 
 /* ── Chat History ─────────────────────────────────────────── */
 
+typedef struct {
+    const char* role;       /* "user", "assistant", "system", "tool" */
+    const char* content;
+} SeaDbChatMsg;
+
 SeaError sea_db_chat_log(SeaDb* db, i64 chat_id, const char* role,
                          const char* content);
+
+/* Load last N messages for a chat. Returns count loaded. */
+i32 sea_db_chat_history(SeaDb* db, i64 chat_id,
+                        SeaDbChatMsg* out, i32 max_count, SeaArena* arena);
+
+/* Clear chat history for a chat */
+SeaError sea_db_chat_clear(SeaDb* db, i64 chat_id);
 
 /* ── Raw SQL (escape hatch) ───────────────────────────────── */
 

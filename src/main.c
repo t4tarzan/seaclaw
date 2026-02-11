@@ -188,14 +188,40 @@ static void dispatch_command(const char* input) {
         printf("  \033[36m[BRAIN]\033[0m Processing: \"%s\"\n", input);
 
         if (s_agent_cfg.api_key || s_agent_cfg.provider == SEA_LLM_LOCAL) {
-            /* Route through LLM agent */
-            SeaAgentResult ar = sea_agent_chat(&s_agent_cfg, NULL, 0,
+            /* Load conversation history from DB */
+            SeaDbChatMsg db_msgs[20];
+            i32 hist_count = 0;
+            if (s_db) {
+                hist_count = sea_db_chat_history(s_db, 0, db_msgs, 20,
+                                                 &s_request_arena);
+            }
+
+            /* Convert DB messages to agent format */
+            SeaChatMsg history[20];
+            for (i32 i = 0; i < hist_count; i++) {
+                if (strcmp(db_msgs[i].role, "assistant") == 0)
+                    history[i].role = SEA_ROLE_ASSISTANT;
+                else
+                    history[i].role = SEA_ROLE_USER;
+                history[i].content = db_msgs[i].content;
+                history[i].tool_call_id = NULL;
+                history[i].tool_name = NULL;
+            }
+
+            /* Route through LLM agent with history */
+            SeaAgentResult ar = sea_agent_chat(&s_agent_cfg,
+                                               history, (u32)hist_count,
                                                input, &s_request_arena);
             if (ar.error == SEA_OK && ar.text) {
                 printf("\n  %s\n", ar.text);
                 if (ar.tool_calls > 0) {
                     printf("  \033[33m(%u tool call%s)\033[0m\n",
                            ar.tool_calls, ar.tool_calls > 1 ? "s" : "");
+                }
+                /* Save to conversation memory */
+                if (s_db) {
+                    sea_db_chat_log(s_db, 0, "user", input);
+                    sea_db_chat_log(s_db, 0, "assistant", ar.text);
                 }
             } else {
                 printf("  \033[31m[ERROR]\033[0m %s\n",
@@ -217,8 +243,6 @@ static void dispatch_command(const char* input) {
 
 static SeaError telegram_handler(i64 chat_id, SeaSlice text,
                                   SeaArena* arena, SeaSlice* response) {
-    (void)chat_id;
-
     /* Shield check */
     if (sea_shield_detect_injection(text)) {
         *response = SEA_SLICE_LIT("Rejected: injection detected.");
@@ -227,27 +251,133 @@ static SeaError telegram_handler(i64 chat_id, SeaSlice text,
 
     /* Check if it's a command */
     if (text.len > 0 && text.data[0] == '/') {
+        /* Helper: extract rest of command after prefix */
+        #define CMD_REST(prefix) \
+            (SeaSlice){ .data = text.data + sizeof(prefix) - 1, \
+                        .len  = text.len  - (u32)(sizeof(prefix) - 1) }
+
         if (sea_slice_eq_cstr(text, "/status")) {
             SeaSlice args = SEA_SLICE_EMPTY;
             return sea_tool_exec("system_status", args, arena, response);
         }
+
+        /* /tools — list all registered tools */
         if (sea_slice_eq_cstr(text, "/tools")) {
-            *response = SEA_SLICE_LIT("Tools: echo, system_status");
+            u32 tc = sea_tools_count();
+            char buf[1024];
+            int pos = snprintf(buf, sizeof(buf), "Tools (%u):\n", tc);
+            for (u32 i = 0; i < tc && pos < (int)sizeof(buf) - 80; i++) {
+                const SeaTool* t = sea_tool_by_id(i + 1);
+                if (t) pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos,
+                    "  /%s — %s\n", t->name, t->description);
+            }
+            u8* dst = (u8*)sea_arena_push_bytes(arena, buf, (u64)pos);
+            if (dst) { response->data = dst; response->len = (u32)pos; }
             return SEA_OK;
         }
+
+        /* /help — full command reference */
         if (sea_slice_eq_cstr(text, "/help")) {
             *response = SEA_SLICE_LIT(
-                "Sea-Claw v" SEA_VERSION_STRING "\n"
-                "/status - System status\n"
-                "/tools - List tools\n"
-                "/exec <tool> <args> - Execute tool");
+                "Sea-Claw v" SEA_VERSION_STRING " Commands:\n\n"
+                "/status — System status & memory\n"
+                "/tools — List all tools\n"
+                "/task list — List tasks\n"
+                "/task create <title> — Create task\n"
+                "/task done <id> — Complete task\n"
+                "/file read <path> — Read a file\n"
+                "/file write <path> — Write (next msg = content)\n"
+                "/shell <command> — Run shell command\n"
+                "/web <url> — Fetch URL content\n"
+                "/session clear — Clear chat history\n"
+                "/model — Show current LLM model\n"
+                "/exec <tool> <args> — Raw tool exec\n\n"
+                "Or just type naturally — I'll use AI + tools.");
             return SEA_OK;
         }
-        /* /exec <tool> <args> */
+
+        /* /task list | /task create <title> | /task done <id> */
+        if (text.len >= 5 && memcmp(text.data, "/task", 5) == 0) {
+            SeaSlice args;
+            if (text.len == 5 || sea_slice_eq_cstr(text, "/task list")) {
+                args = SEA_SLICE_LIT("list");
+            } else if (text.len > 13 && memcmp(text.data, "/task create ", 13) == 0) {
+                /* Build: create|<title> */
+                const char* title = (const char*)text.data + 13;
+                u32 tlen = text.len - 13;
+                char tmp[512];
+                int n = snprintf(tmp, sizeof(tmp), "create|%.*s", (int)tlen, title);
+                args = (SeaSlice){ .data = (const u8*)sea_arena_push_bytes(arena, tmp, (u64)n),
+                                   .len = (u32)n };
+            } else if (text.len > 11 && memcmp(text.data, "/task done ", 11) == 0) {
+                const char* id_str = (const char*)text.data + 11;
+                u32 ilen = text.len - 11;
+                char tmp[64];
+                int n = snprintf(tmp, sizeof(tmp), "done|%.*s", (int)ilen, id_str);
+                args = (SeaSlice){ .data = (const u8*)sea_arena_push_bytes(arena, tmp, (u64)n),
+                                   .len = (u32)n };
+            } else {
+                *response = SEA_SLICE_LIT("Usage: /task list | /task create <title> | /task done <id>");
+                return SEA_OK;
+            }
+            return sea_tool_exec("task_manage", args, arena, response);
+        }
+
+        /* /file read <path> | /file write <path>|<content> */
+        if (text.len > 5 && memcmp(text.data, "/file", 5) == 0) {
+            if (text.len > 11 && memcmp(text.data, "/file read ", 11) == 0) {
+                SeaSlice args = { .data = text.data + 11, .len = text.len - 11 };
+                return sea_tool_exec("file_read", args, arena, response);
+            }
+            if (text.len > 12 && memcmp(text.data, "/file write ", 12) == 0) {
+                SeaSlice args = { .data = text.data + 12, .len = text.len - 12 };
+                return sea_tool_exec("file_write", args, arena, response);
+            }
+            *response = SEA_SLICE_LIT("Usage: /file read <path> | /file write <path>|<content>");
+            return SEA_OK;
+        }
+
+        /* /shell <command> */
+        if (text.len > 7 && memcmp(text.data, "/shell ", 7) == 0) {
+            SeaSlice args = { .data = text.data + 7, .len = text.len - 7 };
+            return sea_tool_exec("shell_exec", args, arena, response);
+        }
+
+        /* /web <url> */
+        if (text.len > 5 && memcmp(text.data, "/web ", 5) == 0) {
+            SeaSlice args = { .data = text.data + 5, .len = text.len - 5 };
+            return sea_tool_exec("web_fetch", args, arena, response);
+        }
+
+        /* /session clear */
+        if (sea_slice_eq_cstr(text, "/session clear")) {
+            if (s_db) {
+                sea_db_chat_clear(s_db, chat_id);
+                *response = SEA_SLICE_LIT("Chat history cleared.");
+            } else {
+                *response = SEA_SLICE_LIT("No database available.");
+            }
+            return SEA_OK;
+        }
+
+        /* /model — show current model info */
+        if (sea_slice_eq_cstr(text, "/model")) {
+            char buf[256];
+            int n = snprintf(buf, sizeof(buf),
+                "Model: %s\nProvider: %s\nAPI URL: %s",
+                s_agent_cfg.model ? s_agent_cfg.model : "(default)",
+                s_agent_cfg.provider == SEA_LLM_LOCAL ? "local" :
+                s_agent_cfg.provider == SEA_LLM_ANTHROPIC ? "anthropic" : "openai",
+                s_agent_cfg.api_url ? s_agent_cfg.api_url : "(default)");
+            u8* dst = (u8*)sea_arena_push_bytes(arena, buf, (u64)n);
+            if (dst) { response->data = dst; response->len = (u32)n; }
+            return SEA_OK;
+        }
+
+        /* /exec <tool> <args> — raw tool execution */
         if (text.len > 6 && memcmp(text.data, "/exec ", 6) == 0) {
             const u8* rest = text.data + 6;
             u32 rlen = text.len - 6;
-            /* Extract tool name */
             char tool_name[SEA_MAX_TOOL_NAME];
             u32 i = 0;
             while (i < rlen && rest[i] != ' ' && i < SEA_MAX_TOOL_NAME - 1) {
@@ -259,6 +389,8 @@ static SeaError telegram_handler(i64 chat_id, SeaSlice text,
             SeaSlice args = { .data = rest + i, .len = rlen - i };
             return sea_tool_exec(tool_name, args, arena, response);
         }
+
+        #undef CMD_REST
         *response = SEA_SLICE_LIT("Unknown command. Type /help");
         return SEA_OK;
     }
@@ -274,10 +406,36 @@ static SeaError telegram_handler(i64 chat_id, SeaSlice text,
         memcpy(input, text.data, text.len);
         input[text.len] = '\0';
 
-        SeaAgentResult ar = sea_agent_chat(&s_agent_cfg, NULL, 0, input, arena);
+        /* Load conversation history from DB */
+        SeaDbChatMsg db_msgs[20];
+        i32 hist_count = 0;
+        if (s_db) {
+            hist_count = sea_db_chat_history(s_db, chat_id, db_msgs, 20, arena);
+        }
+
+        /* Convert DB messages to agent format */
+        SeaChatMsg history[20];
+        for (i32 i = 0; i < hist_count; i++) {
+            if (strcmp(db_msgs[i].role, "assistant") == 0)
+                history[i].role = SEA_ROLE_ASSISTANT;
+            else
+                history[i].role = SEA_ROLE_USER;
+            history[i].content = db_msgs[i].content;
+            history[i].tool_call_id = NULL;
+            history[i].tool_name = NULL;
+        }
+
+        SeaAgentResult ar = sea_agent_chat(&s_agent_cfg,
+                                            history, (u32)hist_count,
+                                            input, arena);
         if (ar.error == SEA_OK && ar.text) {
             response->data = (const u8*)ar.text;
             response->len  = (u32)strlen(ar.text);
+            /* Save to conversation memory */
+            if (s_db) {
+                sea_db_chat_log(s_db, chat_id, "user", input);
+                sea_db_chat_log(s_db, chat_id, "assistant", ar.text);
+            }
         } else {
             const char* err_msg = ar.text ? ar.text : "Agent error.";
             response->data = (const u8*)err_msg;
