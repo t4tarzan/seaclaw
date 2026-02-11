@@ -652,9 +652,7 @@ int main(int argc, char** argv) {
 
     /* Environment variable overrides for secrets (non-empty only) */
     const char* env_val;
-    if ((env_val = getenv("OPENAI_API_KEY")) && *env_val &&
-        (!s_config.llm_api_key || !*s_config.llm_api_key))
-        s_config.llm_api_key = env_val;
+    /* Note: LLM API keys are resolved per-provider below in the agent init section */
     if ((env_val = getenv("TELEGRAM_BOT_TOKEN")) && *env_val &&
         (!s_config.telegram_token || !*s_config.telegram_token))
         s_config.telegram_token = env_val;
@@ -707,22 +705,23 @@ int main(int argc, char** argv) {
     s_agent_cfg.api_url  = s_config.llm_api_url;
     s_agent_cfg.model    = s_config.llm_model;
 
-    /* Env var overrides per provider for primary */
+    /* Env var overrides per provider for primary (check NULL or empty) */
+    #define NEEDS_KEY(k) (!(k) || !*(k))
     switch (s_agent_cfg.provider) {
         case SEA_LLM_OPENAI:
-            if (!s_agent_cfg.api_key && (env_val = getenv("OPENAI_API_KEY")))
+            if (NEEDS_KEY(s_agent_cfg.api_key) && (env_val = getenv("OPENAI_API_KEY")) && *env_val)
                 s_agent_cfg.api_key = env_val;
             break;
         case SEA_LLM_ANTHROPIC:
-            if (!s_agent_cfg.api_key && (env_val = getenv("ANTHROPIC_API_KEY")))
+            if (NEEDS_KEY(s_agent_cfg.api_key) && (env_val = getenv("ANTHROPIC_API_KEY")) && *env_val)
                 s_agent_cfg.api_key = env_val;
             break;
         case SEA_LLM_GEMINI:
-            if (!s_agent_cfg.api_key && (env_val = getenv("GEMINI_API_KEY")))
+            if (NEEDS_KEY(s_agent_cfg.api_key) && (env_val = getenv("GEMINI_API_KEY")) && *env_val)
                 s_agent_cfg.api_key = env_val;
             break;
         case SEA_LLM_OPENROUTER:
-            if (!s_agent_cfg.api_key && (env_val = getenv("OPENROUTER_API_KEY")))
+            if (NEEDS_KEY(s_agent_cfg.api_key) && (env_val = getenv("OPENROUTER_API_KEY")) && *env_val)
                 s_agent_cfg.api_key = env_val;
             break;
         case SEA_LLM_LOCAL:
@@ -738,7 +737,7 @@ int main(int argc, char** argv) {
         fb->api_url  = s_config.llm_fallbacks[fi].api_url;
         fb->model    = s_config.llm_fallbacks[fi].model;
         /* Env var override for fallback API keys */
-        if (!fb->api_key) {
+        if (NEEDS_KEY(fb->api_key)) {
             switch (fb->provider) {
                 case SEA_LLM_OPENAI:     fb->api_key = getenv("OPENAI_API_KEY"); break;
                 case SEA_LLM_ANTHROPIC:  fb->api_key = getenv("ANTHROPIC_API_KEY"); break;
@@ -749,6 +748,7 @@ int main(int argc, char** argv) {
         }
         s_agent_cfg.fallback_count++;
     }
+    #undef NEEDS_KEY
 
     sea_agent_init(&s_agent_cfg);
 

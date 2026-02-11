@@ -44,7 +44,7 @@ void sea_agent_defaults(SeaAgentConfig* cfg) {
         switch (cfg->provider) {
             case SEA_LLM_OPENAI:     cfg->model = "gpt-4o-mini"; break;
             case SEA_LLM_ANTHROPIC:  cfg->model = "claude-3-haiku-20240307"; break;
-            case SEA_LLM_GEMINI:     cfg->model = "gemini-2.5-pro"; break;
+            case SEA_LLM_GEMINI:     cfg->model = "gemini-2.0-flash"; break;
             case SEA_LLM_OPENROUTER: cfg->model = "moonshotai/kimi-k2.5"; break;
             case SEA_LLM_LOCAL:      cfg->model = "llama3"; break;
         }
@@ -322,7 +322,7 @@ static ParsedResponse parse_llm_response(const char* body, u32 body_len,
 /* ── Build auth header ────────────────────────────────────── */
 
 static const char* build_auth_header(SeaAgentConfig* cfg, SeaArena* arena) {
-    if (!cfg->api_key) return NULL;
+    if (!cfg->api_key || !cfg->api_key[0]) return NULL;
 
     const char* prefix;
     if (cfg->provider == SEA_LLM_ANTHROPIC) {
@@ -422,6 +422,11 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
         } else {
             SEA_LOG_WARN("AGENT", "Primary provider failed (err=%d, http=%d), trying fallbacks...",
                          err, (err == SEA_OK) ? resp.status_code : 0);
+            if (err == SEA_OK && resp.body.len > 0) {
+                SEA_LOG_WARN("AGENT", "Error body: %.*s",
+                             (int)(resp.body.len > 200 ? 200 : resp.body.len),
+                             (const char*)resp.body.data);
+            }
         }
 
         /* Try fallback providers */
