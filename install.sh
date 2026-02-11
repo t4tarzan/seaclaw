@@ -414,7 +414,10 @@ if confirm "Set up Telegram bot?" "n"; then
         ok "Bot token saved"
         echo ""
         echo -e "  ${DIM}To restrict the bot to your chat only, enter your chat ID.${RESET}"
-        echo -e "  ${DIM}Get it from: ${CYAN}https://t.me/userinfobot${RESET}"
+        echo -e "  ${DIM}How to get it:${RESET}"
+        echo -e "  ${DIM}  1. Message ${CYAN}@userinfobot${RESET}${DIM} on Telegram — it replies with your ID${RESET}"
+        echo -e "  ${DIM}  2. Or open: ${CYAN}https://api.telegram.org/bot${TG_TOKEN}/getUpdates${RESET}"
+        echo -e "  ${DIM}     (send your bot a message first, then look for \"chat\":{\"id\":...})${RESET}"
         echo -e "  ${DIM}Leave blank (0) to allow all chats.${RESET}"
         read_input TG_CHAT_ID "Telegram chat ID" "0"
     fi
