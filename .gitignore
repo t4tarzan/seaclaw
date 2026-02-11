@@ -6,6 +6,15 @@
 *.so
 *.dylib
 sea_claw
+test_arena
+test_json
+test_shield
+test_db
+
+# Database
+*.db
+*.db-wal
+*.db-shm
 
 # Working files (not for public repo)
 /working/
@@ -32,6 +41,6 @@ config.json
 # Logs
 *.log
 
-# Core dumps
-core
-core.*
+# Core dumps (root only, not src/core/)
+/core
+/core.*

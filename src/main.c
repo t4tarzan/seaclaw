@@ -14,6 +14,7 @@
 #include "seaclaw/sea_shield.h"
 #include "seaclaw/sea_json.h"
 #include "seaclaw/sea_telegram.h"
+#include "seaclaw/sea_db.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +27,7 @@
 #define ARENA_SIZE       (16 * 1024 * 1024)   /* 16 MB */
 #define REQUEST_ARENA    (1  * 1024 * 1024)    /* 1 MB per request */
 #define INPUT_BUF_SIZE   4096
+#define DEFAULT_DB_PATH  "seaclaw.db"
 
 /* ── ASCII Banner ─────────────────────────────────────────── */
 
@@ -45,6 +47,8 @@ static SeaArena      s_session_arena;
 static SeaArena      s_request_arena;
 static SeaTelegram   s_telegram;
 static bool          s_telegram_mode = false;
+static SeaDb*        s_db = NULL;
+static const char*   s_db_path = DEFAULT_DB_PATH;
 
 /* ── Signal handler ───────────────────────────────────────── */
 
@@ -61,6 +65,7 @@ static void cmd_help(void) {
     printf("    /status            System status\n");
     printf("    /tools             List available tools\n");
     printf("    /exec <tool> <arg> Execute a tool\n");
+    printf("    /tasks             List pending tasks\n");
     printf("    /clear             Clear screen\n");
     printf("    /quit              Exit Sea-Claw\n");
     printf("\n");
@@ -133,6 +138,21 @@ static void dispatch_command(const char* input) {
         printf("\n");
     } else if (strncmp(input, "/exec ", 6) == 0) {
         cmd_exec(input);
+    } else if (strcmp(input, "/tasks") == 0) {
+        if (!s_db) { printf("  No database loaded.\n"); }
+        else {
+            SeaDbTask tasks[32];
+            i32 count = sea_db_task_list(s_db, NULL, tasks, 32, &s_request_arena);
+            printf("\n  \033[1mTasks (%d):\033[0m\n", count);
+            for (i32 i = 0; i < count; i++) {
+                const char* icon = "○";
+                if (strcmp(tasks[i].status, "completed") == 0) icon = "\033[32m✓\033[0m";
+                else if (strcmp(tasks[i].status, "in_progress") == 0) icon = "\033[33m►\033[0m";
+                printf("    %s [%s] %s\n", icon, tasks[i].priority, tasks[i].title);
+            }
+            printf("\n");
+            sea_arena_reset(&s_request_arena);
+        }
     } else if (strcmp(input, "/clear") == 0) {
         printf("\033[2J\033[H");
         printf("%s\n", BANNER);
@@ -272,10 +292,13 @@ int main(int argc, char** argv) {
             s_telegram_mode = true;
         } else if (strcmp(argv[i], "--chat") == 0 && i + 1 < argc) {
             tg_chat_id = atoll(argv[++i]);
+        } else if (strcmp(argv[i], "--db") == 0 && i + 1 < argc) {
+            s_db_path = argv[++i];
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             printf("Usage: sea_claw [OPTIONS]\n");
             printf("  --telegram <token>  Run as Telegram bot\n");
             printf("  --chat <id>         Restrict to chat ID\n");
+            printf("  --db <path>         Database file (default: seaclaw.db)\n");
             printf("  -h, --help          Show this help\n");
             return 0;
         }
@@ -308,6 +331,14 @@ int main(int argc, char** argv) {
 
     /* Initialize tools */
     sea_tools_init();
+
+    /* Initialize database */
+    if (sea_db_open(&s_db, s_db_path) == SEA_OK) {
+        SEA_LOG_INFO("DB", "Ledger open: %s", s_db_path);
+        sea_db_log_event(s_db, "startup", "Sea-Claw started", SEA_VERSION_STRING);
+    } else {
+        SEA_LOG_WARN("DB", "Running without database.");
+    }
 
     SEA_LOG_INFO("SHIELD", "Grammar Filter: ACTIVE.");
 
@@ -346,6 +377,10 @@ int main(int argc, char** argv) {
 
     printf("\n");
     SEA_LOG_INFO("SYSTEM", "Shutting down...");
+    if (s_db) {
+        sea_db_log_event(s_db, "shutdown", "Sea-Claw stopped", "clean");
+        sea_db_close(s_db);
+    }
     sea_arena_destroy(&s_request_arena);
     sea_arena_destroy(&s_session_arena);
     SEA_LOG_INFO("SYSTEM", "Goodbye. The Vault stands.");

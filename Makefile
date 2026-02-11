@@ -59,7 +59,7 @@ CFLAGS_RELEASE := $(CFLAGS_BASE) $(ARCH_FLAGS) -O3 -march=native -flto \
 CFLAGS := $(CFLAGS_DEBUG)
 
 # Linker
-LDFLAGS := -lm -lcurl
+LDFLAGS := -lm -lcurl -lsqlite3
 LDFLAGS_DEBUG := -fsanitize=address,undefined
 LDFLAGS_RELEASE := -flto -Wl,--as-needed -pie
 
@@ -67,7 +67,8 @@ LDFLAGS_RELEASE := -flto -Wl,--as-needed -pie
 
 CORE_SRC := \
 	src/core/sea_arena.c \
-	src/core/sea_log.c
+	src/core/sea_log.c \
+	src/core/sea_db.c
 
 SENSES_SRC := \
 	src/senses/sea_json.c \
@@ -98,6 +99,9 @@ TEST_JSON_OBJ := $(TEST_JSON_SRC:.c=.o)
 TEST_SHIELD_SRC := tests/test_shield.c
 TEST_SHIELD_OBJ := $(TEST_SHIELD_SRC:.c=.o)
 
+TEST_DB_SRC := tests/test_db.c
+TEST_DB_OBJ := $(TEST_DB_SRC:.c=.o)
+
 # ── Output ────────────────────────────────────────────────────
 
 BIN     := sea_claw
@@ -105,6 +109,7 @@ DISTDIR := dist
 TESTBIN_ARENA  := test_arena
 TESTBIN_JSON   := test_json
 TESTBIN_SHIELD := test_shield
+TESTBIN_DB     := test_db
 
 # ── Targets ───────────────────────────────────────────────────
 
@@ -142,13 +147,14 @@ debug: clean all
 
 # ── Tests ─────────────────────────────────────────────────────
 
-test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD)
+test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB)
 	@echo ""
 	@echo "  Running tests..."
 	@echo "  ────────────────"
 	./$(TESTBIN_ARENA)
 	./$(TESTBIN_JSON)
 	./$(TESTBIN_SHIELD)
+	./$(TESTBIN_DB)
 	@echo ""
 
 $(TESTBIN_ARENA): $(TEST_ARENA_OBJ) src/core/sea_arena.o src/core/sea_log.o
@@ -160,10 +166,13 @@ $(TESTBIN_JSON): $(TEST_JSON_OBJ) src/core/sea_arena.o src/core/sea_log.o src/se
 $(TESTBIN_SHIELD): $(TEST_SHIELD_OBJ) src/core/sea_log.o src/shield/sea_shield.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
+$(TESTBIN_DB): $(TEST_DB_OBJ) src/core/sea_arena.o src/core/sea_log.o src/core/sea_db.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
+
 # ── Clean ─────────────────────────────────────────────────────
 
 clean:
-	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD)
+	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB)
 	find src tests -name '*.o' -delete 2>/dev/null || true
 	@echo "  Cleaned."
 
