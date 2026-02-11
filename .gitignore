@@ -1,58 +1,52 @@
+
+!config/config.example.json
 # Build artifacts
-/dist/
-/build/
-*.o
-*.a
-*.so
-*.dylib
-sea_claw
-test_arena
-test_json
-test_shield
-test_db
-test_config
-
+# Core dumps (root only, not src/core/)
 # Database
-*.db
-*.db-wal
-*.db-shm
-
+# Environment secrets
+# IDE
+# Logs
+# OS
+# Secrets
 # Working files (not for public repo)
-/working/
+*.a
+*.db
+*.db-shm
+*.db-wal
+*.dylib
+*.key
+*.log
+*.o
+*.pem
+*.so
+*.swo
+*.swp
+*~
+.DS_Store
+.env
+.idea/
+.pgpass
+.vscode/
 /Kimi_Agent_OpenClaw C Rebuild Project/
+/build/
+/core
+/core.*
+/dist/
 /openclaw_analysis/
+/working/
+Thumbs.db
 claude.md
+config.json
 docs/PERFORMANCE_PHILOSOPHY.md
 docs/PROJECT_STRUCTURE.md
 docs/TERMINAL_UX_REFERENCE.md
-
-# Environment secrets
-.env
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Secrets
-.pgpass
-*.pem
-*.key
-config.json
-!config/config.example.json
-
-# Logs
-*.log
-
-# Core dumps (root only, not src/core/)
-/core
-/core.*
+sea_claw
+test_arena
 test_bus
-test_session
+test_config
+test_cron
+test_db
+test_json
 test_memory
+test_session
+test_shield
