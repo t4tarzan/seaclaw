@@ -263,7 +263,30 @@ static SeaError telegram_handler(i64 chat_id, SeaSlice text,
         return SEA_OK;
     }
 
-    /* Natural language — echo for now */
+    /* Natural language — route through LLM agent */
+    if (s_agent_cfg.api_key || s_agent_cfg.provider == SEA_LLM_LOCAL) {
+        /* Null-terminate the input for the agent */
+        char* input = (char*)sea_arena_alloc(arena, text.len + 1, 1);
+        if (!input) {
+            *response = SEA_SLICE_LIT("Memory error.");
+            return SEA_ERR_OOM;
+        }
+        memcpy(input, text.data, text.len);
+        input[text.len] = '\0';
+
+        SeaAgentResult ar = sea_agent_chat(&s_agent_cfg, NULL, 0, input, arena);
+        if (ar.error == SEA_OK && ar.text) {
+            response->data = (const u8*)ar.text;
+            response->len  = (u32)strlen(ar.text);
+        } else {
+            const char* err_msg = ar.text ? ar.text : "Agent error.";
+            response->data = (const u8*)err_msg;
+            response->len  = (u32)strlen(err_msg);
+        }
+        return SEA_OK;
+    }
+
+    /* No LLM configured — echo fallback */
     return sea_tool_exec("echo", text, arena, response);
 }
 
