@@ -27,7 +27,7 @@ One Convergence, which alongside partners Team F1 and White Noise spent two deca
 
 ### The Solution: Classic Programming Meets Modern Intelligence
 
-Sea-Claw is written in **12,290 lines of pure C11** — the same language that powers Linux, PostgreSQL, and every network router on the planet. No runtime interpreter. No garbage collector. No dependency chain. Every byte is accounted for.
+Sea-Claw is written in **13,400+ lines of pure C11** — the same language that powers Linux, PostgreSQL, and every network router on the planet. No runtime interpreter. No garbage collector. No dependency chain. Every byte is accounted for.
 
 **By the numbers:**
 
@@ -36,17 +36,17 @@ Sea-Claw is written in **12,290 lines of pure C11** — the same language that p
 | Binary size | **~5 MB** | 200–500 MB |
 | Startup time | **<50ms** | 3–15 seconds |
 | Memory usage | **8 MB idle** | 200–800 MB |
-| Source files | **87 files** | 500+ files |
+| Source files | **95 files** | 500+ files |
 | External dependencies | **2** (libcurl, SQLite) | 100–400 npm/Go packages |
 | Architecture support | **x86, ARM, generic** | x86 only |
-| Tool count | **50 built-in tools** | 10–20 typical |
+| Tool count | **56 built-in tools** | 10–20 typical |
 | Test coverage | **116 tests, 10 suites** | Varies |
 
 Sea-Claw's architecture is built on five pillars:
 
 - **Arena Allocation** — Zero memory leaks by design. Memory is allocated in arenas and freed in bulk. No malloc/free spaghetti.
 - **Grammar-Constrained Input** — Every byte entering the system passes through a Shield module that validates against defined grammars. SQL injection, XSS, path traversal — rejected at the byte level before reaching any logic.
-- **Static Tool Registry** — All 50 tools are compiled into the binary. No dynamic loading, no plugin vulnerabilities, no supply-chain attacks.
+- **Static Tool Registry** — All 56 tools are compiled into the binary. No dynamic loading, no plugin vulnerabilities, no supply-chain attacks.
 - **Message Bus Architecture** — A thread-safe pub/sub bus decouples channels from the AI brain. Telegram, Discord, WhatsApp, CLI — all channels speak through one nervous system.
 - **Persistent Memory** — Sessions, conversation history, long-term memory, daily notes, and scheduled jobs all survive restarts via SQLite. The assistant remembers.
 
