@@ -2,7 +2,7 @@
 
 > *"We stop building software that breaks. We start building logic that survives."*
 
-A zero-dependency AI agent platform written in pure C11. 61 tests. 6,500+ lines. 24 tools. No garbage collector. No runtime. No excuses.
+A zero-dependency AI agent platform written in pure C11. 61 tests. 9,100+ lines. 50 tools. No garbage collector. No runtime. No excuses.
 
 ---
 
@@ -18,7 +18,7 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 - **Conversation Memory** — Chat history persisted in SQLite. Last 20 messages loaded as context per chat.
 - **Agent-to-Agent (A2A)** — Delegate tasks to remote agents (OpenClaw, Agent-0) via HTTP JSON-RPC. Shield-verified results.
 - **SQLite Database** — Embedded ledger for config, tasks, trajectory, chat history. Single file, WAL mode.
-- **Static Tool Registry** — 24 tools compiled in. No dynamic loading. No eval. No surprises.
+- **Static Tool Registry** — 50 tools compiled in. No dynamic loading. No eval. No surprises.
 
 ## Architecture
 
@@ -44,7 +44,7 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 | **Senses** | `src/senses/` | JSON parser, HTTP client |
 | **Shield** | `src/shield/` | Byte-level grammar validation |
 | **Brain** | `src/brain/` | LLM agent loop with tool calling + fallback |
-| **Hands** | `src/hands/` | 24 tools: file I/O, shell, web, search, math, text, hash, DNS, and more |
+| **Hands** | `src/hands/` | 50 tools: file, shell, web, search, math, text, hash, DNS, SSL, weather, and more |
 | **A2A** | `src/a2a/` | Agent-to-Agent delegation protocol |
 | **Telegram** | `src/telegram/` | Bot interface (Mirror pattern) |
 
@@ -109,7 +109,7 @@ Config fields: `telegram_token`, `telegram_chat_id`, `db_path`, `log_level`, `ar
 |---------|-------------|
 | `/help` | Full command reference |
 | `/status` | System status & memory |
-| `/tools` | List all 24 tools |
+| `/tools` | List all 50 tools |
 | `/task list` | List tasks |
 | `/task create <title>` | Create a task |
 | `/task done <id>` | Complete a task |
