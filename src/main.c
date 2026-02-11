@@ -14,10 +14,13 @@
 #include "seaclaw/sea_shield.h"
 #include "seaclaw/sea_json.h"
 #include "seaclaw/sea_telegram.h"
+#include "seaclaw/sea_bus.h"
+#include "seaclaw/sea_channel.h"
 #include "seaclaw/sea_db.h"
 #include "seaclaw/sea_config.h"
 #include "seaclaw/sea_agent.h"
 #include "seaclaw/sea_a2a.h"
+#include <pthread.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,11 +53,14 @@ static SeaArena      s_session_arena;
 static SeaArena      s_request_arena;
 static SeaTelegram   s_telegram;
 static bool          s_telegram_mode = false;
+static bool          s_gateway_mode = false;
 SeaDb*               s_db = NULL;
 static const char*   s_db_path = DEFAULT_DB_PATH;
 static SeaConfig     s_config;
 static const char*   s_config_path = "config.json";
 static SeaAgentConfig s_agent_cfg;
+static SeaBus        s_bus;
+static SeaChannelManager s_chan_mgr;
 
 /* ── Signal handler ───────────────────────────────────────── */
 
@@ -572,7 +578,7 @@ static SeaError telegram_handler(i64 chat_id, SeaSlice text,
     return sea_tool_exec("echo", text, arena, response);
 }
 
-/* ── Telegram polling loop ───────────────────────────────── */
+/* ── Telegram polling loop (legacy direct mode) ─────────── */
 
 static int run_telegram(const char* token, i64 chat_id) {
     SeaError err = sea_telegram_init(&s_telegram, token, chat_id,
@@ -603,6 +609,178 @@ static int run_telegram(const char* token, i64 chat_id) {
     return 0;
 }
 
+/* ── Gateway: bus-based agent loop thread ─────────────────── */
+
+/* Forward declaration for Telegram channel create */
+extern SeaChannel* sea_channel_telegram_create(const char* bot_token, i64 allowed_chat_id);
+extern void sea_channel_telegram_destroy(SeaChannel* ch);
+
+static void* gateway_agent_thread(void* arg) {
+    (void)arg;
+    SEA_LOG_INFO("GATEWAY", "Agent loop started (bus consumer)");
+
+    SeaArena agent_arena;
+    if (sea_arena_create(&agent_arena, REQUEST_ARENA) != SEA_OK) {
+        SEA_LOG_ERROR("GATEWAY", "Failed to create agent arena");
+        return NULL;
+    }
+
+    while (s_running) {
+        SeaBusMsg msg;
+        SeaError err = sea_bus_consume_inbound(&s_bus, &msg, 500);
+        if (err == SEA_ERR_TIMEOUT || err == SEA_ERR_EOF) continue;
+        if (err != SEA_OK) continue;
+
+        SEA_LOG_INFO("GATEWAY", "Processing [%s] chat=%lld: %.60s",
+                     msg.channel ? msg.channel : "?",
+                     (long long)msg.chat_id,
+                     msg.content ? msg.content : "");
+
+        /* Check if it's a command (starts with /) — handle via telegram_handler logic */
+        SeaSlice text_slice = { .data = (const u8*)msg.content, .len = msg.content_len };
+
+        /* Shield check */
+        if (!sea_shield_check(text_slice, SEA_GRAMMAR_SAFE_TEXT)) {
+            sea_bus_publish_outbound(&s_bus, msg.channel, msg.chat_id,
+                                     "Rejected: invalid input.", 24);
+            sea_arena_reset(&agent_arena);
+            continue;
+        }
+
+        /* Route through LLM agent */
+        if (s_agent_cfg.api_key || s_agent_cfg.provider == SEA_LLM_LOCAL) {
+            /* Load conversation history from DB */
+            SeaDbChatMsg db_msgs[20];
+            i32 hist_count = 0;
+            if (s_db) {
+                hist_count = sea_db_chat_history(s_db, msg.chat_id, db_msgs, 20,
+                                                 &agent_arena);
+            }
+
+            /* Convert DB messages to agent format */
+            SeaChatMsg history[20];
+            for (i32 i = 0; i < hist_count; i++) {
+                if (strcmp(db_msgs[i].role, "assistant") == 0)
+                    history[i].role = SEA_ROLE_ASSISTANT;
+                else
+                    history[i].role = SEA_ROLE_USER;
+                history[i].content = db_msgs[i].content;
+                history[i].tool_call_id = NULL;
+                history[i].tool_name = NULL;
+            }
+
+            SeaAgentResult ar = sea_agent_chat(&s_agent_cfg,
+                                               history, (u32)hist_count,
+                                               msg.content, &agent_arena);
+            if (ar.error == SEA_OK && ar.text) {
+                u32 rlen = (u32)strlen(ar.text);
+                sea_bus_publish_outbound(&s_bus, msg.channel, msg.chat_id,
+                                         ar.text, rlen);
+                /* Save to conversation memory */
+                if (s_db) {
+                    sea_db_chat_log(s_db, msg.chat_id, "user", msg.content);
+                    sea_db_chat_log(s_db, msg.chat_id, "assistant", ar.text);
+                }
+            } else {
+                const char* err_msg = ar.text ? ar.text : "Agent error.";
+                sea_bus_publish_outbound(&s_bus, msg.channel, msg.chat_id,
+                                         err_msg, (u32)strlen(err_msg));
+            }
+        } else {
+            sea_bus_publish_outbound(&s_bus, msg.channel, msg.chat_id,
+                                     "No LLM configured.", 19);
+        }
+
+        sea_arena_reset(&agent_arena);
+    }
+
+    sea_arena_destroy(&agent_arena);
+    SEA_LOG_INFO("GATEWAY", "Agent loop stopped");
+    return NULL;
+}
+
+static void* gateway_dispatch_thread(void* arg) {
+    (void)arg;
+    SEA_LOG_INFO("GATEWAY", "Outbound dispatcher started");
+
+    while (s_running) {
+        u32 dispatched = sea_channel_dispatch_outbound(&s_chan_mgr);
+        if (dispatched == 0) {
+            usleep(50000); /* 50ms idle sleep */
+        }
+    }
+
+    SEA_LOG_INFO("GATEWAY", "Outbound dispatcher stopped");
+    return NULL;
+}
+
+static SeaChannel* s_tg_channel_ptr = NULL;
+
+static int run_gateway(const char* tg_token, i64 tg_chat_id) {
+    /* Initialize message bus (2MB arena for message data) */
+    SeaError err = sea_bus_init(&s_bus, 2 * 1024 * 1024);
+    if (err != SEA_OK) {
+        SEA_LOG_ERROR("GATEWAY", "Bus init failed: %s", sea_error_str(err));
+        return 1;
+    }
+
+    /* Initialize channel manager */
+    sea_channel_manager_init(&s_chan_mgr, &s_bus);
+
+    /* Register Telegram channel if configured */
+    if (tg_token) {
+        s_tg_channel_ptr = sea_channel_telegram_create(tg_token, tg_chat_id);
+        if (s_tg_channel_ptr) {
+            sea_channel_manager_register(&s_chan_mgr, s_tg_channel_ptr);
+        }
+    }
+
+    /* Start all channels (each gets its own poll thread) */
+    err = sea_channel_manager_start_all(&s_chan_mgr);
+    if (err != SEA_OK) {
+        SEA_LOG_ERROR("GATEWAY", "Channel start failed: %s", sea_error_str(err));
+        sea_bus_destroy(&s_bus);
+        return 1;
+    }
+
+    /* Print enabled channels */
+    const char* names[SEA_MAX_CHANNELS];
+    u32 nc = sea_channel_manager_enabled_names(&s_chan_mgr, names, SEA_MAX_CHANNELS);
+    for (u32 i = 0; i < nc; i++) {
+        SEA_LOG_INFO("GATEWAY", "Channel active: %s", names[i]);
+    }
+
+    /* Start agent loop thread (consumes inbound, publishes outbound) */
+    pthread_t agent_tid;
+    pthread_create(&agent_tid, NULL, gateway_agent_thread, NULL);
+
+    /* Start outbound dispatch thread (routes outbound to channels) */
+    pthread_t dispatch_tid;
+    pthread_create(&dispatch_tid, NULL, gateway_dispatch_thread, NULL);
+
+    SEA_LOG_INFO("GATEWAY", "Gateway running. %u channel(s). Ctrl+C to stop.", nc);
+
+    /* Wait for shutdown signal */
+    while (s_running) {
+        sleep(1);
+    }
+
+    /* Graceful shutdown */
+    SEA_LOG_INFO("GATEWAY", "Shutting down...");
+    sea_channel_manager_stop_all(&s_chan_mgr);
+    sea_bus_destroy(&s_bus);
+
+    pthread_join(agent_tid, NULL);
+    pthread_join(dispatch_tid, NULL);
+
+    if (s_tg_channel_ptr) {
+        sea_channel_telegram_destroy(s_tg_channel_ptr);
+        s_tg_channel_ptr = NULL;
+    }
+
+    return 0;
+}
+
 /* ── Main ─────────────────────────────────────────────────── */
 
 int main(int argc, char** argv) {
@@ -611,7 +789,9 @@ int main(int argc, char** argv) {
     i64 tg_chat_id = 0;
 
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--telegram") == 0 && i + 1 < argc) {
+        if (strcmp(argv[i], "--gateway") == 0) {
+            s_gateway_mode = true;
+        } else if (strcmp(argv[i], "--telegram") == 0 && i + 1 < argc) {
             tg_token = argv[++i];
             s_telegram_mode = true;
         } else if (strcmp(argv[i], "--chat") == 0 && i + 1 < argc) {
@@ -623,7 +803,8 @@ int main(int argc, char** argv) {
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             printf("Usage: sea_claw [OPTIONS]\n");
             printf("  --config <path>     Config file (default: config.json)\n");
-            printf("  --telegram <token>  Run as Telegram bot\n");
+            printf("  --gateway           Run in gateway mode (bus-based, multi-channel)\n");
+            printf("  --telegram <token>  Run as Telegram bot (legacy direct mode)\n");
             printf("  --chat <id>         Restrict to chat ID\n");
             printf("  --db <path>         Database file (default: seaclaw.db)\n");
             printf("  -h, --help          Show this help\n");
@@ -756,8 +937,12 @@ int main(int argc, char** argv) {
 
     int ret = 0;
 
-    if (s_telegram_mode) {
-        /* ── Telegram Mode ───────────────────────────────────── */
+    if (s_gateway_mode) {
+        /* ── Gateway Mode (v2 bus-based) ─────────────────────── */
+        SEA_LOG_INFO("STATUS", "Starting gateway mode (v2 bus architecture)");
+        ret = run_gateway(tg_token, tg_chat_id);
+    } else if (s_telegram_mode) {
+        /* ── Telegram Mode (legacy direct) ────────────────────── */
         ret = run_telegram(tg_token, tg_chat_id);
     } else {
         /* ── Interactive TUI Mode ─────────────────────────────── */
