@@ -11,10 +11,14 @@
 #include "seaclaw/sea_json.h"
 #include "seaclaw/sea_tools.h"
 #include "seaclaw/sea_shield.h"
+#include "seaclaw/sea_db.h"
 #include "seaclaw/sea_log.h"
 
 #include <stdio.h>
 #include <string.h>
+
+/* External DB handle from main.c for audit trail */
+extern SeaDb* s_db;
 
 /* ── Defaults ─────────────────────────────────────────────── */
 
@@ -515,6 +519,17 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
         };
         SeaSlice tool_output;
         SeaError tool_err = sea_tool_exec(pr.tool_name, tool_args, arena, &tool_output);
+
+        /* Audit: log tool execution */
+        if (s_db && pr.tool_name) {
+            char audit[512];
+            snprintf(audit, sizeof(audit), "tool=%s args=%.*s status=%s",
+                     pr.tool_name,
+                     pr.tool_args ? (int)strlen(pr.tool_args) : 0,
+                     pr.tool_args ? pr.tool_args : "",
+                     tool_err == SEA_OK ? "ok" : "error");
+            sea_db_log_event(s_db, "tool_exec", pr.tool_name, audit);
+        }
 
         /* Build tool result message for next round */
         if (extra_count < MAX_EXTRA_MSGS - 1) {

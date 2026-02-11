@@ -133,6 +133,40 @@ SeaError sea_db_log_event(SeaDb* db, const char* entry_type,
     return SEA_OK;
 }
 
+i32 sea_db_recent_events(SeaDb* db, SeaDbEvent* out, i32 max_count,
+                         SeaArena* arena) {
+    if (!db || !out || !arena || max_count <= 0) return 0;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "SELECT id, entry_type, title, content, created_at FROM ("
+        "  SELECT id, entry_type, title, content, created_at FROM trajectory"
+        "  ORDER BY id DESC LIMIT ?"
+        ") ORDER BY id DESC";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return 0;
+
+    sqlite3_bind_int(stmt, 1, max_count);
+
+    i32 count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        out[count].id         = sqlite3_column_int(stmt, 0);
+        out[count].entry_type = arena_strdup(arena,
+                                  (const char*)sqlite3_column_text(stmt, 1));
+        out[count].title      = arena_strdup(arena,
+                                  (const char*)sqlite3_column_text(stmt, 2));
+        out[count].content    = arena_strdup(arena,
+                                  (const char*)sqlite3_column_text(stmt, 3));
+        out[count].created_at = arena_strdup(arena,
+                                  (const char*)sqlite3_column_text(stmt, 4));
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    return count;
+}
+
 /* ── Config ───────────────────────────────────────────────── */
 
 SeaError sea_db_config_set(SeaDb* db, const char* key, const char* value) {

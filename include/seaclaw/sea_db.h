@@ -27,8 +27,20 @@ void sea_db_close(SeaDb* db);
 
 /* ── Trajectory (audit log) ───────────────────────────────── */
 
+typedef struct {
+    i32         id;
+    const char* entry_type;
+    const char* title;
+    const char* content;
+    const char* created_at;
+} SeaDbEvent;
+
 SeaError sea_db_log_event(SeaDb* db, const char* entry_type,
                           const char* title, const char* content);
+
+/* Load last N events. Returns count loaded. */
+i32 sea_db_recent_events(SeaDb* db, SeaDbEvent* out, i32 max_count,
+                         SeaArena* arena);
 
 /* ── Key-Value Config ─────────────────────────────────────── */
 

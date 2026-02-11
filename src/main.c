@@ -362,6 +362,33 @@ static SeaError telegram_handler(i64 chat_id, SeaSlice text,
             return SEA_OK;
         }
 
+        /* /audit — show recent audit trail */
+        if (sea_slice_eq_cstr(text, "/audit")) {
+            if (!s_db) {
+                *response = SEA_SLICE_LIT("No database available.");
+                return SEA_OK;
+            }
+            SeaDbEvent events[10];
+            i32 ec = sea_db_recent_events(s_db, events, 10, arena);
+            if (ec == 0) {
+                *response = SEA_SLICE_LIT("No audit events yet.");
+                return SEA_OK;
+            }
+            char buf[2048];
+            int pos = snprintf(buf, sizeof(buf), "Audit Trail (last %d):\n", ec);
+            for (i32 i = 0; i < ec && pos < (int)sizeof(buf) - 120; i++) {
+                pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos,
+                    "\n[%s] %s: %s\n  %s",
+                    events[i].created_at ? events[i].created_at : "?",
+                    events[i].entry_type ? events[i].entry_type : "?",
+                    events[i].title ? events[i].title : "?",
+                    events[i].content ? events[i].content : "");
+            }
+            u8* dst = (u8*)sea_arena_push_bytes(arena, buf, (u64)pos);
+            if (dst) { response->data = dst; response->len = (u32)pos; }
+            return SEA_OK;
+        }
+
         /* /model — show current model info */
         if (sea_slice_eq_cstr(text, "/model")) {
             char buf[256];

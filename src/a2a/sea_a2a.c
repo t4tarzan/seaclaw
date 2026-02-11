@@ -9,7 +9,11 @@
 #include "seaclaw/sea_http.h"
 #include "seaclaw/sea_json.h"
 #include "seaclaw/sea_shield.h"
+#include "seaclaw/sea_db.h"
 #include "seaclaw/sea_log.h"
+
+/* External DB handle from main.c for audit trail */
+extern SeaDb* s_db;
 
 #include <stdio.h>
 #include <string.h>
@@ -204,6 +208,19 @@ SeaA2aResult sea_a2a_delegate(const SeaA2aPeer* peer,
         } else {
             result.verified = true;
         }
+    }
+
+    /* Audit: log A2A delegation */
+    if (s_db) {
+        char audit[512];
+        snprintf(audit, sizeof(audit), "peer=%s task=%s success=%s latency=%ums verified=%s",
+                 peer->name ? peer->name : peer->endpoint,
+                 req->task_desc ? req->task_desc : "(none)",
+                 result.success ? "true" : "false",
+                 result.latency_ms,
+                 result.verified ? "true" : "false");
+        sea_db_log_event(s_db, "a2a_delegate",
+                         peer->name ? peer->name : "unknown", audit);
     }
 
     SEA_LOG_INFO("A2A", "Delegation %s: %s (%ums, verified=%s)",

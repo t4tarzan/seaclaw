@@ -95,7 +95,8 @@ HANDS_SRC := \
 	src/hands/impl/tool_file_write.c \
 	src/hands/impl/tool_shell_exec.c \
 	src/hands/impl/tool_web_fetch.c \
-	src/hands/impl/tool_task_manage.c
+	src/hands/impl/tool_task_manage.c \
+	src/hands/impl/tool_db_query.c
 
 MAIN_SRC := src/main.c
 
