@@ -54,8 +54,11 @@ SeaError sea_shield_enforce(SeaSlice input, SeaGrammarType grammar, const char* 
 
 /* ── Specific validators ──────────────────────────────────── */
 
-/* Check if input looks like a shell injection attempt */
+/* Check if input looks like a shell injection attempt (strict: shell metacharacters) */
 bool sea_shield_detect_injection(SeaSlice input);
+
+/* Check if LLM output contains injection (relaxed: no shell metachar, only prompt injection + XSS) */
+bool sea_shield_detect_output_injection(SeaSlice output);
 
 /* Check if a URL is HTTPS and on an allowed domain */
 bool sea_shield_validate_url(SeaSlice url);

@@ -546,7 +546,7 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
             if (pr.text && strlen(pr.text) > 0) {
                 SeaSlice out_slice = { .data = (const u8*)pr.text,
                                        .len = (u32)strlen(pr.text) };
-                if (sea_shield_detect_injection(out_slice)) {
+                if (sea_shield_detect_output_injection(out_slice)) {
                     SEA_LOG_WARN("AGENT", "Shield REJECTED LLM output (injection)");
                     result.text = "[Output rejected by Shield: potential injection detected]";
                     result.error = SEA_ERR_INVALID_INPUT;

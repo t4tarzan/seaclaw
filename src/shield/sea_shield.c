@@ -172,8 +172,9 @@ SeaError sea_shield_enforce(SeaSlice input, SeaGrammarType grammar, const char* 
 
 /* ── Injection detection ──────────────────────────────────── */
 
-static const char* s_injection_patterns[] = {
-    "$(", "`",  "&&", "||", ";", "|",
+/* Strict patterns for USER INPUT and TOOL ARGS — shell metacharacters matter */
+static const char* s_input_injection_patterns[] = {
+    "$(", "`",  "&&", "||", ";",
     "../", "\\",
     "<script", "javascript:", "eval(",
     "DROP TABLE", "DELETE FROM", "INSERT INTO",
@@ -181,18 +182,33 @@ static const char* s_injection_patterns[] = {
     NULL
 };
 
-bool sea_shield_detect_injection(SeaSlice input) {
+/* Relaxed patterns for LLM OUTPUT — skip shell metacharacters that appear
+ * naturally in markdown tables (|), comparisons (||), semicolons in prose,
+ * and backslashes in paths. Only catch actual prompt injection and XSS. */
+static const char* s_output_injection_patterns[] = {
+    "<script", "javascript:", "eval(",
+    "ignore previous instructions",
+    "ignore all previous",
+    "disregard your instructions",
+    "you are now",
+    "new instructions:",
+    "system prompt:",
+    "ADMIN OVERRIDE",
+    NULL
+};
+
+static bool detect_patterns(SeaSlice input, const char** patterns) {
     if (input.len == 0) return false;
 
-    for (int p = 0; s_injection_patterns[p]; p++) {
-        const char* pat = s_injection_patterns[p];
+    for (int p = 0; patterns[p]; p++) {
+        const char* pat = patterns[p];
         u32 plen = (u32)strlen(pat);
         if (plen > input.len) continue;
 
         for (u32 i = 0; i <= input.len - plen; i++) {
             bool match = true;
             for (u32 j = 0; j < plen; j++) {
-                /* Case-insensitive for SQL patterns */
+                /* Case-insensitive */
                 u8 a = input.data[i + j];
                 u8 b = (u8)pat[j];
                 if (a >= 'A' && a <= 'Z') a += 32;
@@ -209,6 +225,14 @@ bool sea_shield_detect_injection(SeaSlice input) {
     }
 
     return false;
+}
+
+bool sea_shield_detect_injection(SeaSlice input) {
+    return detect_patterns(input, s_input_injection_patterns);
+}
+
+bool sea_shield_detect_output_injection(SeaSlice output) {
+    return detect_patterns(output, s_output_injection_patterns);
 }
 
 /* ── URL validation ───────────────────────────────────────── */

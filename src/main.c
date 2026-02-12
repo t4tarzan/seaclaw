@@ -989,10 +989,20 @@ int main(int argc, char** argv) {
             if (fgets(ob_provider, sizeof(ob_provider), stdin)) {
                 ob_provider[strcspn(ob_provider, "\n")] = '\0';
             }
-            printf("  API Key: ");
-            fflush(stdout);
-            if (fgets(ob_key, sizeof(ob_key), stdin)) {
-                ob_key[strcspn(ob_key, "\n")] = '\0';
+            char ob_api_url[256] = {0};
+            if (strcmp(ob_provider, "local") == 0) {
+                printf("  No API key needed for local LLM.\n");
+                printf("  Ollama URL [http://localhost:11434]: ");
+                fflush(stdout);
+                if (fgets(ob_api_url, sizeof(ob_api_url), stdin)) {
+                    ob_api_url[strcspn(ob_api_url, "\n")] = '\0';
+                }
+            } else {
+                printf("  API Key: ");
+                fflush(stdout);
+                if (fgets(ob_key, sizeof(ob_key), stdin)) {
+                    ob_key[strcspn(ob_key, "\n")] = '\0';
+                }
             }
             printf("  Model (or press Enter for default): ");
             fflush(stdout);
@@ -1022,7 +1032,8 @@ int main(int argc, char** argv) {
             if (cf) {
                 fprintf(cf, "{\n");
                 fprintf(cf, "  \"llm_provider\": \"%s\",\n", ob_provider);
-                fprintf(cf, "  \"llm_api_key\": \"%s\",\n", ob_key);
+                if (ob_key[0]) fprintf(cf, "  \"llm_api_key\": \"%s\",\n", ob_key);
+                if (ob_api_url[0]) fprintf(cf, "  \"llm_api_url\": \"%s/v1/chat/completions\",\n", ob_api_url);
                 if (ob_model[0]) fprintf(cf, "  \"llm_model\": \"%s\",\n", ob_model);
                 if (ob_tg_token[0]) {
                     fprintf(cf, "  \"telegram_token\": \"%s\",\n", ob_tg_token);
