@@ -2,7 +2,7 @@
 
 > *"We stop building software that breaks. We start building logic that survives."*
 
-A sovereign AI agent platform written in pure C11. 116 tests. 13,400+ lines. 56 tools. No garbage collector. No runtime. No excuses.
+A sovereign AI agent platform written in pure C11. 116 tests. 13,400+ lines. 57 tools. No garbage collector. No runtime. No excuses.
 
 **By [One Convergence](https://oneconvergence.com)** — 25+ years of security & networking infrastructure.
 
@@ -27,7 +27,7 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 - **Usage Tracking** — Token consumption per provider, per day. SQLite-persisted audit trail.
 - **Agent-to-Agent (A2A)** — Delegate tasks to remote agents via HTTP JSON-RPC. Shield-verified results.
 - **SQLite Database** — Embedded ledger for config, tasks, trajectory, chat history. Single file, WAL mode.
-- **Static Tool Registry** — 56 tools compiled in. No dynamic loading. No eval. No surprises.
+- **Static Tool Registry** — 57 tools compiled in. No dynamic loading. No eval. No surprises.
 
 ## Architecture
 
@@ -36,7 +36,7 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 │                    Sea-Claw Binary                       │
 ├──────────┬──────────┬──────────┬─────────┬───────────────┤
 │ Substrate│  Senses  │  Shield  │  Brain  │    Hands      │
-│(Arena,DB)│(JSON,HTTP)│(Grammar)│ (Agent) │  (56 Tools)   │
+│(Arena,DB)│(JSON,HTTP)│(Grammar)│ (Agent) │  (57 Tools)   │
 ├──────────┴──────────┴──────────┴─────────┴───────────────┤
 │  Bus ─── Session ─── Memory ─── Cron ─── Skills ─── A2A │
 ├──────────────────────┬───────────────────────────────────┤
@@ -54,7 +54,7 @@ Sea-Claw is a sovereign computing engine — a single binary that runs an AI age
 | **Senses** | `src/senses/` | JSON parser, HTTP client |
 | **Shield** | `src/shield/` | Byte-level grammar validation |
 | **Brain** | `src/brain/` | LLM agent loop with tool calling + fallback |
-| **Hands** | `src/hands/` | 56 tools: file, shell, web, search, math, text, hash, DNS, SSL, weather, cron, memory, spawn |
+| **Hands** | `src/hands/` | 57 tools: file, shell, web, search, math, text, hash, DNS, SSL, weather, cron, memory, recall, spawn |
 | **Bus** | `src/bus/` | Thread-safe message bus (pub/sub, inbound/outbound queues) |
 | **Channels** | `src/channels/` | Channel abstraction + Telegram channel adapter |
 | **Session** | `src/session/` | Per-chat session isolation, LLM-driven summarization |
@@ -272,7 +272,7 @@ Or put them in a `.env` file in the working directory — Sea-Claw loads it auto
 |---------|-------------|
 | `/help` | Full command reference |
 | `/status` | System status & memory |
-| `/tools` | List all 56 tools |
+| `/tools` | List all 57 tools |
 | `/task list` | List tasks |
 | `/task create <title>` | Create a task |
 | `/task done <id>` | Complete a task |
@@ -382,7 +382,7 @@ seaclaw/
 | External dependencies | libcurl, libsqlite3 |
 | C standard | C11 |
 | Tests | 116 (10 suites, all passing) |
-| Tools | 56 (file, shell, web, search, text, data, hash, DNS, SSL, weather, math, cron, memory, spawn, message) |
+| Tools | 57 (file, shell, web, search, text, data, hash, DNS, SSL, weather, math, cron, memory, recall, spawn, message) |
 | Binary size | ~3 MB (debug), ~1.5 MB (release) |
 | Startup time | < 1 ms |
 | Peak memory | ~16 MB (idle) |
@@ -395,6 +395,148 @@ seaclaw/
 | CLI commands | `--doctor`, `--onboard`, `--gateway` |
 | A2A protocol | HTTP JSON-RPC with Shield verification |
 | Documentation | [seaclaw.virtualgpt.cloud](https://seaclaw.virtualgpt.cloud) |
+
+---
+
+## On-Prem Enterprise Solution — Sea-Claw Mesh
+
+> *Your AI. Your network. Your rules. Zero data leakage.*
+
+Sea-Claw Mesh turns every machine on your local network into an AI-powered node — all coordinated by a single central brain running a local LLM. **No data ever leaves your network.** No cloud APIs. No API keys. No third-party dependencies. Zero operating cost.
+
+### The Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                     YOUR LOCAL NETWORK                            │
+│                  No data leaves this boundary                     │
+│                                                                   │
+│   ┌──────────────────────────────────────────┐                    │
+│   │      CAPTAIN  (M4 Mac, 64 GB RAM)        │                    │
+│   │                                           │                    │
+│   │   Ollama (70B model, Q8_0 KV cache)      │                    │
+│   │   Sea-Claw (captain mode, port 9100)     │                    │
+│   │   Telegram / WebChat (single outbound)   │                    │
+│   │   SQLite (shared task queue + audit)      │                    │
+│   └────────────┬─────────────────────────────┘                    │
+│                │                                                   │
+│       ┌────────┼────────┬──────────┐                              │
+│       ▼        ▼        ▼          ▼                              │
+│   ┌───────┐┌───────┐┌───────┐┌─────────┐                         │
+│   │ Node 1││ Node 2││ Node 3││ Node 4  │                         │
+│   │Laptop ││Desktop││  RPi  ││ Server  │                         │
+│   │ 2 MB  ││ 2 MB  ││ 2 MB  ││  2 MB   │                         │
+│   │       ││       ││       ││         │                         │
+│   │ files ││docker ││sensors││database │                         │
+│   │ shell ││ build ││ GPIO  ││ backup  │                         │
+│   │  web  ││ test  ││camera ││ deploy  │                         │
+│   └───────┘└───────┘└───────┘└─────────┘                         │
+│                                                                   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### How It Works
+
+| Step | What Happens |
+|------|-------------|
+| **1. Deploy** | Copy the 2 MB binary to any machine. One config file. Zero dependencies. |
+| **2. Register** | Crew nodes auto-register with the Captain on startup, advertising their capabilities. |
+| **3. Task** | User sends a message (Telegram, CLI, or WebChat) → Captain receives it. |
+| **4. Think** | Captain routes to the local LLM (Ollama on the M4). LLM decides which tools to call. |
+| **5. Route** | Captain dispatches tool calls to the right node based on capability matching. |
+| **6. Execute** | Node runs the tool locally and returns the result — Shield-verified at every boundary. |
+| **7. Respond** | Captain feeds results back to the LLM, gets the final answer, sends to user. |
+
+### Why On-Prem?
+
+| Concern | Cloud AI Agents | Sea-Claw Mesh |
+|---------|----------------|---------------|
+| **Data sovereignty** | Every message → third-party servers | Nothing leaves your LAN |
+| **Compliance** | GDPR, HIPAA, SOC2 concerns | Air-gappable. Full audit trail in SQLite |
+| **Operating cost** | $0.01–$0.10 per message (API fees) | $0 — local LLM, no API charges |
+| **Availability** | Internet outage = dead | Works without internet |
+| **Latency** | 200–2000 ms (cloud round-trip) | 5–50 ms (LAN round-trip) |
+| **Binary size per node** | 200+ MB (Node.js runtime) | 2 MB (static C binary) |
+| **RAM per node** | 150–300 MB idle | 8–17 MB idle |
+| **Runs on** | Servers with 2+ GB RAM | Anything with a CPU — laptops, Raspberry Pi, routers |
+
+### 6-Layer Security Model
+
+```
+Layer 1 │ Mesh Authentication    Shared secret + HMAC tokens. No token = rejected.
+Layer 2 │ IP Allowlist           Only accepts connections from configured LAN subnets.
+Layer 3 │ Capability Gating      Nodes only execute tools they advertised. No lateral movement.
+Layer 4 │ Input Shield           Byte-level grammar validation. Shell/SQL/XSS injection blocked.
+Layer 5 │ Output Shield          LLM responses scanned for prompt injection before delivery.
+Layer 6 │ Full Audit Trail       Every task, tool call, and result logged to SQLite with timestamps.
+```
+
+### Quick Start
+
+**On the central machine (Captain — M4 Mac, 64 GB):**
+
+```bash
+# Install Ollama + pull a powerful model
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama pull qwen2.5:72b
+
+# Run Sea-Claw as Captain
+./sea_claw --mode captain --config captain.json
+```
+
+**On any other machine (Crew — any Linux/macOS):**
+
+```bash
+# Copy the 2 MB binary + one config file. That's it.
+scp user@captain:~/seaclaw/sea_claw .
+
+./sea_claw --mode crew --config crew.json
+# Auto-registers with Captain, starts accepting work.
+```
+
+### Capability-Based Routing
+
+Each node advertises what it can do. The Captain routes intelligently:
+
+```
+User: "Build and deploy the Docker image"
+
+  Captain checks node capabilities:
+    node1-laptop:  [file_read, shell_exec, python]     → no docker
+    node2-desktop: [docker, build, test, shell_exec]    → has docker ✓
+    node3-rpi:     [gpio, sensors, camera]              → no docker
+
+  → Routes to node2-desktop
+  → Node2 runs: docker build -t myapp . && docker push
+  → Result returned to Captain → LLM formats response → Telegram
+```
+
+### Use Cases
+
+- **Development teams** — Every developer's laptop is a node. Central M4 runs the LLM. Code review, testing, and deployment coordinated through Telegram.
+- **IoT / Industrial** — Raspberry Pi nodes monitor sensors, cameras, GPIO. Central brain analyzes data and triggers actions. Zero cloud dependency.
+- **Regulated industries** — Healthcare, finance, legal. Data never leaves the premises. Full audit trail for compliance. Air-gappable.
+- **Research labs** — Multiple workstations share one powerful LLM. Experiment data stays on-site. Results coordinated through a single chat interface.
+- **Small business** — One Mac Mini as the brain, employee laptops as nodes. AI assistant for the whole office at zero recurring cost.
+
+### Get In Touch
+
+**Interested in deploying Sea-Claw Mesh for your organization?**
+
+We provide:
+- **Architecture consulting** — Design the optimal mesh topology for your infrastructure
+- **Custom deployment** — Tailored node configurations, security policies, and tool capabilities
+- **On-site installation** — Air-gapped environments, compliance-sensitive deployments
+- **Training** — Team onboarding, custom skill development, workflow automation
+- **Support** — Priority bug fixes, feature requests, and dedicated engineering time
+
+📧 **Email:** [enterprise@oneconvergence.com](mailto:enterprise@oneconvergence.com)
+🌐 **Web:** [oneconvergence.com](https://oneconvergence.com)
+📄 **Docs:** [seaclaw.virtualgpt.cloud](https://seaclaw.virtualgpt.cloud)
+
+> *25+ years of security & networking infrastructure. We built Sea-Claw because we needed an AI agent we could actually trust on our own network.*
+
+---
 
 ## License
 
