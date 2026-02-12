@@ -287,7 +287,7 @@ make release 2>&1 | tail -3
 BINARY_SIZE=$(ls -lh dist/sea_claw | awk '{print $5}')
 ok "Built: dist/sea_claw (${BINARY_SIZE})"
 
-info "Running 116 tests (10 suites)..."
+info "Running tests (12 suites)..."
 make test 2>&1 | grep -E "(passed|failed|Results)" | tail -12
 ok "All tests passed"
 

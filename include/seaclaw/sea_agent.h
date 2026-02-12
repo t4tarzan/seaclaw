@@ -25,6 +25,29 @@ typedef enum {
     SEA_LLM_LOCAL,         /* Local OpenAI-compatible (ollama, etc) */
 } SeaLlmProvider;
 
+/* ── Think Level ─────────────────────────────────────────── */
+
+typedef enum {
+    SEA_THINK_OFF    = 0,   /* Minimal thinking, fast responses     */
+    SEA_THINK_LOW    = 1,   /* Brief reasoning                      */
+    SEA_THINK_MEDIUM = 2,   /* Balanced (default)                   */
+    SEA_THINK_HIGH   = 3,   /* Deep reasoning, longer responses     */
+} SeaThinkLevel;
+
+/* ── Smart Router Hint ───────────────────────────────────── */
+
+typedef enum {
+    SEA_ROUTE_AUTO   = 0,   /* Auto-detect based on input           */
+    SEA_ROUTE_FAST   = 1,   /* Prefer fastest/cheapest provider     */
+    SEA_ROUTE_SMART  = 2,   /* Prefer most capable provider         */
+    SEA_ROUTE_LOCAL  = 3,   /* Force local LLM only                 */
+} SeaRouteHint;
+
+/* ── SSE Streaming Callback ──────────────────────────────── */
+
+/* Called for each token/chunk during streaming. Return false to abort. */
+typedef bool (*SeaStreamCallback)(const char* chunk, u32 chunk_len, void* user_data);
+
 /* ── Agent Configuration ──────────────────────────────────── */
 
 /* Fallback provider entry */
@@ -50,6 +73,19 @@ typedef struct {
     /* Fallback chain: tried in order if primary fails */
     SeaLlmFallback fallbacks[SEA_MAX_FALLBACKS];
     u32            fallback_count;
+
+    /* Think level: controls temperature and max_tokens */
+    SeaThinkLevel  think_level;
+
+    /* Smart router: hint for provider selection */
+    SeaRouteHint   route_hint;
+
+    /* SSE streaming: if set, stream tokens to callback */
+    SeaStreamCallback stream_cb;
+    void*             stream_user_data;
+
+    /* PII firewall: bitmask of SeaPiiCategory to redact (0 = disabled) */
+    u32            pii_categories;
 } SeaAgentConfig;
 
 /* ── Chat Message ─────────────────────────────────────────── */
@@ -95,5 +131,24 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
 
 /* Build the system prompt with tool descriptions. */
 const char* sea_agent_build_system_prompt(SeaArena* arena);
+
+/* Hot-swap the model at runtime. Thread-safe. */
+void sea_agent_set_model(SeaAgentConfig* cfg, const char* model);
+
+/* Hot-swap the provider at runtime. */
+void sea_agent_set_provider(SeaAgentConfig* cfg, SeaLlmProvider provider,
+                             const char* api_key, const char* api_url);
+
+/* Set think level (adjusts temperature + max_tokens). */
+void sea_agent_set_think_level(SeaAgentConfig* cfg, SeaThinkLevel level);
+
+/* Get think level name. */
+const char* sea_agent_think_level_name(SeaThinkLevel level);
+
+/* Compact: summarize a conversation history into a single message.
+ * Returns the summary string allocated in arena. */
+const char* sea_agent_compact(SeaAgentConfig* cfg,
+                               SeaChatMsg* history, u32 history_count,
+                               SeaArena* arena);
 
 #endif /* SEA_AGENT_H */

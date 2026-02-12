@@ -15,6 +15,7 @@
 #include "seaclaw/sea_log.h"
 #include "seaclaw/sea_memory.h"
 #include "seaclaw/sea_recall.h"
+#include "seaclaw/sea_pii.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -67,6 +68,9 @@ void sea_agent_defaults(SeaAgentConfig* cfg) {
     if (cfg->max_tokens == 0) cfg->max_tokens = 4096;
     if (cfg->temperature == 0.0) cfg->temperature = 0.7;
     if (cfg->max_tool_rounds == 0) cfg->max_tool_rounds = 5;
+
+    /* Apply think level overrides */
+    sea_agent_set_think_level(cfg, cfg->think_level);
 }
 
 void sea_agent_init(SeaAgentConfig* cfg) {
@@ -82,7 +86,62 @@ void sea_agent_init(SeaAgentConfig* cfg) {
     SEA_LOG_INFO("AGENT", "Provider: %s, Model: %s", prov_name, cfg->model);
 }
 
-/* ── String builder helpers ───────────────────────────────── */
+/* ── Think Level ──────────────────────────────────────── */
+
+void sea_agent_set_think_level(SeaAgentConfig* cfg, SeaThinkLevel level) {
+    if (!cfg) return;
+    cfg->think_level = level;
+    switch (level) {
+        case SEA_THINK_OFF:
+            cfg->temperature = 0.3;
+            cfg->max_tokens = 1024;
+            break;
+        case SEA_THINK_LOW:
+            cfg->temperature = 0.5;
+            cfg->max_tokens = 2048;
+            break;
+        case SEA_THINK_MEDIUM:
+            cfg->temperature = 0.7;
+            cfg->max_tokens = 4096;
+            break;
+        case SEA_THINK_HIGH:
+            cfg->temperature = 0.9;
+            cfg->max_tokens = 8192;
+            break;
+    }
+    SEA_LOG_INFO("AGENT", "Think level: %s (temp=%.1f, max_tokens=%u)",
+                 sea_agent_think_level_name(level), cfg->temperature, cfg->max_tokens);
+}
+
+const char* sea_agent_think_level_name(SeaThinkLevel level) {
+    switch (level) {
+        case SEA_THINK_OFF:    return "off";
+        case SEA_THINK_LOW:    return "low";
+        case SEA_THINK_MEDIUM: return "medium";
+        case SEA_THINK_HIGH:   return "high";
+        default:               return "unknown";
+    }
+}
+
+/* ── Model Hot-Swap ───────────────────────────────────── */
+
+void sea_agent_set_model(SeaAgentConfig* cfg, const char* model) {
+    if (!cfg || !model) return;
+    cfg->model = model;
+    SEA_LOG_INFO("AGENT", "Model hot-swapped to: %s", model);
+}
+
+void sea_agent_set_provider(SeaAgentConfig* cfg, SeaLlmProvider provider,
+                             const char* api_key, const char* api_url) {
+    if (!cfg) return;
+    cfg->provider = provider;
+    if (api_key) cfg->api_key = api_key;
+    if (api_url) cfg->api_url = api_url;
+    sea_agent_defaults(cfg);
+    SEA_LOG_INFO("AGENT", "Provider hot-swapped to: %s (%s)", cfg->api_url, cfg->model);
+}
+
+/* ── String builder helpers ─────────────────────────────── */
 
 typedef struct {
     char*     buf;
@@ -553,6 +612,15 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
                     return result;
                 }
             }
+            /* PII Firewall: redact PII from output if enabled */
+            if (cfg->pii_categories && pr.text && strlen(pr.text) > 0) {
+                SeaSlice pii_slice = { .data = (const u8*)pr.text,
+                                       .len = (u32)strlen(pr.text) };
+                const char* redacted = sea_pii_redact(pii_slice, cfg->pii_categories, arena);
+                if (redacted) {
+                    pr.text = redacted;
+                }
+            }
             result.text = pr.text ? pr.text : "";
             return result;
         }
@@ -634,4 +702,46 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
     result.text = "Reached maximum tool call rounds.";
     result.error = SEA_ERR_TIMEOUT;
     return result;
+}
+
+/* ── Compact: summarize conversation history ──────────────── */
+
+const char* sea_agent_compact(SeaAgentConfig* cfg,
+                               SeaChatMsg* history, u32 history_count,
+                               SeaArena* arena) {
+    if (!cfg || !history || history_count == 0 || !arena) return NULL;
+
+    /* Build a summarization request */
+    StrBuf sb = strbuf_new(arena, 4096);
+    strbuf_append(&sb, "Summarize the following conversation in 2-3 concise paragraphs. "
+                       "Preserve key facts, decisions, and action items. "
+                       "Do NOT include greetings or filler.\n\n");
+
+    for (u32 i = 0; i < history_count; i++) {
+        const char* role_str = "user";
+        if (history[i].role == SEA_ROLE_ASSISTANT) role_str = "assistant";
+        else if (history[i].role == SEA_ROLE_TOOL) role_str = "tool";
+        strbuf_append(&sb, role_str);
+        strbuf_append(&sb, ": ");
+        if (history[i].content) strbuf_append(&sb, history[i].content);
+        strbuf_append(&sb, "\n");
+    }
+
+    /* Use a temporary config with lower tokens for the summary */
+    SeaAgentConfig compact_cfg = *cfg;
+    compact_cfg.max_tokens = 512;
+    compact_cfg.temperature = 0.3;
+    compact_cfg.max_tool_rounds = 0; /* No tool calls during compaction */
+    compact_cfg.stream_cb = NULL;    /* No streaming for compaction */
+
+    SeaAgentResult ar = sea_agent_chat(&compact_cfg, NULL, 0, sb.buf, arena);
+
+    if (ar.error == SEA_OK && ar.text && strlen(ar.text) > 0) {
+        SEA_LOG_INFO("AGENT", "Compacted %u messages into summary (%u chars)",
+                     history_count, (u32)strlen(ar.text));
+        return ar.text;
+    }
+
+    SEA_LOG_WARN("AGENT", "Compaction failed: %s", ar.text ? ar.text : "unknown");
+    return NULL;
 }

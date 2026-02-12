@@ -51,3 +51,4 @@ test_memory
 test_session
 test_shield
 test_skill
+test_pii

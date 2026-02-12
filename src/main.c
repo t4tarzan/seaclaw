@@ -25,6 +25,8 @@
 #include "seaclaw/sea_skill.h"
 #include "seaclaw/sea_usage.h"
 #include "seaclaw/sea_recall.h"
+#include "seaclaw/sea_pii.h"
+#include "seaclaw/sea_mesh.h"
 #include <pthread.h>
 
 #include <stdio.h>
@@ -77,6 +79,10 @@ static SeaUsageTracker   s_usage_inst;
 SeaUsageTracker*         s_usage = NULL;
 static SeaRecall         s_recall_inst;
 SeaRecall*               s_recall = NULL;
+static SeaMesh           s_mesh_inst;
+SeaMesh*                 s_mesh = NULL;
+static bool              s_mesh_mode = false;
+static const char*       s_mesh_role_str = NULL;
 
 /* ── Signal handler ───────────────────────────────────────── */
 
@@ -363,7 +369,13 @@ static SeaError telegram_handler(i64 chat_id, SeaSlice text,
                 "/shell <command> — Run shell command\n"
                 "/web <url> — Fetch URL content\n"
                 "/session clear — Clear chat history\n"
+                "/compact — Summarize & prune chat history\n"
                 "/model — Show current LLM model\n"
+                "/model set <name> — Hot-swap LLM model\n"
+                "/think [off|low|medium|high] — Set thinking level\n"
+                "/usage — Token spend dashboard\n"
+                "/pii [on|off] — Toggle PII firewall\n"
+                "/mesh — Show mesh network status\n"
                 "/audit — View recent audit trail\n"
                 "/delegate <url> <task> — Delegate to remote agent\n"
                 "/exec <tool> <args> — Raw tool exec\n\n"
@@ -517,6 +529,162 @@ static SeaError telegram_handler(i64 chat_id, SeaSlice text,
             }
             u8* dst = (u8*)sea_arena_push_bytes(arena, buf, (u64)n);
             if (dst) { response->data = dst; response->len = (u32)n; }
+            return SEA_OK;
+        }
+
+        /* /compact — summarize + prune chat history */
+        if (sea_slice_eq_cstr(text, "/compact")) {
+            if (!s_db) {
+                *response = SEA_SLICE_LIT("No database available.");
+                return SEA_OK;
+            }
+            SeaDbChatMsg db_msgs[50];
+            i32 hist_count = sea_db_chat_history(s_db, chat_id, db_msgs, 50, arena);
+            if (hist_count < 4) {
+                *response = SEA_SLICE_LIT("Not enough history to compact (need 4+ messages).");
+                return SEA_OK;
+            }
+            /* Convert to agent format */
+            SeaChatMsg history[50];
+            for (i32 i = 0; i < hist_count; i++) {
+                history[i].role = strcmp(db_msgs[i].role, "assistant") == 0
+                    ? SEA_ROLE_ASSISTANT : SEA_ROLE_USER;
+                history[i].content = db_msgs[i].content;
+                history[i].tool_call_id = NULL;
+                history[i].tool_name = NULL;
+            }
+            const char* summary = sea_agent_compact(&s_agent_cfg, history,
+                                                     (u32)hist_count, arena);
+            if (summary) {
+                sea_db_chat_clear(s_db, chat_id);
+                sea_db_chat_log(s_db, chat_id, "system", summary);
+                char buf[2048];
+                int n = snprintf(buf, sizeof(buf),
+                    "Compacted %d messages into summary.\n\n%s", hist_count, summary);
+                u8* dst = (u8*)sea_arena_push_bytes(arena, buf, (u64)n);
+                if (dst) { response->data = dst; response->len = (u32)n; }
+            } else {
+                *response = SEA_SLICE_LIT("Compaction failed — LLM unavailable.");
+            }
+            return SEA_OK;
+        }
+
+        /* /think [off|low|medium|high] — set thinking level */
+        if (text.len >= 6 && memcmp(text.data, "/think", 6) == 0) {
+            if (text.len == 6 || text.data[6] == ' ') {
+                const char* level_str = (text.len > 7) ? (const char*)text.data + 7 : NULL;
+                u32 llen = level_str ? text.len - 7 : 0;
+                if (!level_str) {
+                    char buf[128];
+                    int n = snprintf(buf, sizeof(buf), "Think level: %s (temp=%.1f, max_tokens=%u)",
+                        sea_agent_think_level_name(s_agent_cfg.think_level),
+                        s_agent_cfg.temperature, s_agent_cfg.max_tokens);
+                    u8* dst = (u8*)sea_arena_push_bytes(arena, buf, (u64)n);
+                    if (dst) { response->data = dst; response->len = (u32)n; }
+                } else if (llen == 3 && memcmp(level_str, "off", 3) == 0) {
+                    sea_agent_set_think_level(&s_agent_cfg, SEA_THINK_OFF);
+                    *response = SEA_SLICE_LIT("Think level: off (fast, temp=0.3)");
+                } else if (llen == 3 && memcmp(level_str, "low", 3) == 0) {
+                    sea_agent_set_think_level(&s_agent_cfg, SEA_THINK_LOW);
+                    *response = SEA_SLICE_LIT("Think level: low (brief, temp=0.5)");
+                } else if (llen == 6 && memcmp(level_str, "medium", 6) == 0) {
+                    sea_agent_set_think_level(&s_agent_cfg, SEA_THINK_MEDIUM);
+                    *response = SEA_SLICE_LIT("Think level: medium (balanced, temp=0.7)");
+                } else if (llen == 4 && memcmp(level_str, "high", 4) == 0) {
+                    sea_agent_set_think_level(&s_agent_cfg, SEA_THINK_HIGH);
+                    *response = SEA_SLICE_LIT("Think level: high (deep, temp=0.9)");
+                } else {
+                    *response = SEA_SLICE_LIT("Usage: /think [off|low|medium|high]");
+                }
+                return SEA_OK;
+            }
+        }
+
+        /* /model [set <name>] — show or hot-swap model */
+        if (text.len >= 6 && memcmp(text.data, "/model", 6) == 0) {
+            if (text.len > 11 && memcmp(text.data + 6, " set ", 5) == 0) {
+                /* Hot-swap model */
+                const char* new_model = (const char*)text.data + 11;
+                u32 mlen = text.len - 11;
+                char* model_copy = (char*)sea_arena_alloc(arena, mlen + 1, 1);
+                if (model_copy) {
+                    memcpy(model_copy, new_model, mlen);
+                    model_copy[mlen] = '\0';
+                    sea_agent_set_model(&s_agent_cfg, model_copy);
+                    char buf[256];
+                    int n = snprintf(buf, sizeof(buf), "Model switched to: %s", model_copy);
+                    u8* dst = (u8*)sea_arena_push_bytes(arena, buf, (u64)n);
+                    if (dst) { response->data = dst; response->len = (u32)n; }
+                }
+                return SEA_OK;
+            }
+            /* Show current model */
+            char buf[512];
+            int n = snprintf(buf, sizeof(buf),
+                "Model: %s\nProvider: %s\nAPI URL: %s\nThink: %s\nPII: %s",
+                s_agent_cfg.model ? s_agent_cfg.model : "(default)",
+                s_agent_cfg.provider == SEA_LLM_LOCAL ? "local" :
+                s_agent_cfg.provider == SEA_LLM_ANTHROPIC ? "anthropic" :
+                s_agent_cfg.provider == SEA_LLM_GEMINI ? "gemini" :
+                s_agent_cfg.provider == SEA_LLM_OPENROUTER ? "openrouter" : "openai",
+                s_agent_cfg.api_url ? s_agent_cfg.api_url : "(default)",
+                sea_agent_think_level_name(s_agent_cfg.think_level),
+                s_agent_cfg.pii_categories ? "enabled" : "disabled");
+            u8* dst = (u8*)sea_arena_push_bytes(arena, buf, (u64)n);
+            if (dst) { response->data = dst; response->len = (u32)n; }
+            return SEA_OK;
+        }
+
+        /* /usage — token spend dashboard */
+        if (sea_slice_eq_cstr(text, "/usage")) {
+            if (!s_usage) {
+                *response = SEA_SLICE_LIT("Usage tracking not available.");
+                return SEA_OK;
+            }
+            char buf[2048];
+            u32 slen = sea_usage_summary(s_usage, buf, sizeof(buf));
+            if (slen > 0) {
+                u8* dst = (u8*)sea_arena_push_bytes(arena, buf, (u64)slen);
+                if (dst) { response->data = dst; response->len = slen; }
+            } else {
+                *response = SEA_SLICE_LIT("No usage data yet.");
+            }
+            return SEA_OK;
+        }
+
+        /* /pii [on|off] — toggle PII firewall */
+        if (text.len >= 4 && memcmp(text.data, "/pii", 4) == 0) {
+            if (text.len > 5) {
+                const char* arg = (const char*)text.data + 5;
+                u32 alen = text.len - 5;
+                if (alen == 2 && memcmp(arg, "on", 2) == 0) {
+                    s_agent_cfg.pii_categories = SEA_PII_ALL;
+                    *response = SEA_SLICE_LIT("PII Firewall: ENABLED (email, phone, SSN, CC, IP)");
+                } else if (alen == 3 && memcmp(arg, "off", 3) == 0) {
+                    s_agent_cfg.pii_categories = 0;
+                    *response = SEA_SLICE_LIT("PII Firewall: DISABLED");
+                } else {
+                    *response = SEA_SLICE_LIT("Usage: /pii [on|off]");
+                }
+            } else {
+                char buf[128];
+                int n = snprintf(buf, sizeof(buf), "PII Firewall: %s",
+                    s_agent_cfg.pii_categories ? "ENABLED" : "DISABLED");
+                u8* dst = (u8*)sea_arena_push_bytes(arena, buf, (u64)n);
+                if (dst) { response->data = dst; response->len = (u32)n; }
+            }
+            return SEA_OK;
+        }
+
+        /* /mesh — show mesh status */
+        if (sea_slice_eq_cstr(text, "/mesh")) {
+            if (!s_mesh) {
+                *response = SEA_SLICE_LIT("Mesh not enabled. Use --mode captain|crew");
+                return SEA_OK;
+            }
+            const char* status = sea_mesh_status(s_mesh, arena);
+            response->data = (const u8*)status;
+            response->len = (u32)strlen(status);
             return SEA_OK;
         }
 
@@ -817,6 +985,9 @@ int main(int argc, char** argv) {
             s_db_path = argv[++i];
         } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
             s_config_path = argv[++i];
+        } else if (strcmp(argv[i], "--mode") == 0 && i + 1 < argc) {
+            s_mesh_role_str = argv[++i];
+            s_mesh_mode = true;
         } else if (strcmp(argv[i], "--doctor") == 0) {
             /* ── Doctor: diagnose config, providers, channels ──── */
             load_dotenv(".env");
@@ -1224,6 +1395,30 @@ int main(int argc, char** argv) {
         SEA_LOG_INFO("RECALL", "Memory index ready (%u facts)", sea_recall_count(s_recall));
     }
 
+    /* Initialize mesh engine if --mode specified */
+    if (s_mesh_mode && s_mesh_role_str) {
+        SeaMeshConfig mcfg;
+        memset(&mcfg, 0, sizeof(mcfg));
+        if (strcmp(s_mesh_role_str, "captain") == 0) {
+            mcfg.role = SEA_MESH_CAPTAIN;
+            mcfg.port = 9100;
+        } else if (strcmp(s_mesh_role_str, "crew") == 0) {
+            mcfg.role = SEA_MESH_CREW;
+            mcfg.port = 9101;
+        } else {
+            SEA_LOG_ERROR("MESH", "Unknown mode: %s (use captain or crew)", s_mesh_role_str);
+            s_mesh_mode = false;
+        }
+        if (s_mesh_mode) {
+            char hostname[64] = "node";
+            gethostname(hostname, sizeof(hostname));
+            strncpy(mcfg.node_name, hostname, SEA_MESH_NODE_NAME_MAX - 1);
+            if (sea_mesh_init(&s_mesh_inst, &mcfg, s_db) == SEA_OK) {
+                s_mesh = &s_mesh_inst;
+            }
+        }
+    }
+
     SEA_LOG_INFO("SHIELD", "Grammar Filter: ACTIVE.");
 
     int ret = 0;
@@ -1265,6 +1460,7 @@ int main(int argc, char** argv) {
 
     printf("\n");
     SEA_LOG_INFO("SYSTEM", "Shutting down...");
+    if (s_mesh) { sea_mesh_destroy(s_mesh); s_mesh = NULL; }
     if (s_usage) { sea_usage_save(s_usage); s_usage = NULL; }
     if (s_recall) { sea_recall_destroy(s_recall); s_recall = NULL; }
     if (s_cron) { sea_cron_destroy(s_cron); s_cron = NULL; }

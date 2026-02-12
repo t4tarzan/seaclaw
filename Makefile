@@ -112,6 +112,12 @@ USAGE_SRC := \
 RECALL_SRC := \
 	src/recall/sea_recall.c
 
+PII_SRC := \
+	src/pii/sea_pii.c
+
+MESH_SRC := \
+	src/mesh/sea_mesh.c
+
 HANDS_SRC := \
 	src/hands/sea_tools.c \
 	src/hands/impl/tool_echo.c \
@@ -174,7 +180,7 @@ HANDS_SRC := \
 
 MAIN_SRC := src/main.c
 
-ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(A2A_SRC) $(BUS_SRC) $(CHANNEL_SRC) $(SESSION_SRC) $(MEMORY_SRC) $(CRON_SRC) $(SKILL_SRC) $(USAGE_SRC) $(RECALL_SRC) $(HANDS_SRC) $(MAIN_SRC)
+ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(A2A_SRC) $(BUS_SRC) $(CHANNEL_SRC) $(SESSION_SRC) $(MEMORY_SRC) $(CRON_SRC) $(SKILL_SRC) $(USAGE_SRC) $(RECALL_SRC) $(PII_SRC) $(MESH_SRC) $(HANDS_SRC) $(MAIN_SRC)
 ALL_OBJ := $(ALL_SRC:.c=.o)
 
 TEST_ARENA_SRC := tests/test_arena.c
@@ -210,6 +216,9 @@ TEST_SKILL_OBJ := $(TEST_SKILL_SRC:.c=.o)
 TEST_RECALL_SRC := tests/test_recall.c
 TEST_RECALL_OBJ := $(TEST_RECALL_SRC:.c=.o)
 
+TEST_PII_SRC := tests/test_pii.c
+TEST_PII_OBJ := $(TEST_PII_SRC:.c=.o)
+
 TEST_BENCH_SRC := tests/test_bench.c
 TEST_BENCH_OBJ := $(TEST_BENCH_SRC:.c=.o)
 
@@ -228,6 +237,7 @@ TESTBIN_MEMORY  := test_memory
 TESTBIN_CRON    := test_cron
 TESTBIN_SKILL   := test_skill
 TESTBIN_RECALL  := test_recall
+TESTBIN_PII     := test_pii
 TESTBIN_BENCH   := test_bench
 
 # ── Targets ───────────────────────────────────────────────────
@@ -266,7 +276,7 @@ debug: clean all
 
 # ── Tests ─────────────────────────────────────────────────────
 
-test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL)
+test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII)
 	@echo ""
 	@echo "  Running tests..."
 	@echo "  ────────────────"
@@ -281,6 +291,7 @@ test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN
 	./$(TESTBIN_CRON)
 	./$(TESTBIN_SKILL)
 	./$(TESTBIN_RECALL)
+	./$(TESTBIN_PII)
 	@echo ""
 
 $(TESTBIN_ARENA): $(TEST_ARENA_OBJ) src/core/sea_arena.o src/core/sea_log.o
@@ -301,7 +312,7 @@ $(TESTBIN_CONFIG): $(TEST_CONFIG_OBJ) src/core/sea_arena.o src/core/sea_log.o sr
 $(TESTBIN_BUS): $(TEST_BUS_OBJ) src/bus/sea_bus.o src/core/sea_arena.o src/core/sea_log.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
-$(TESTBIN_SESSION): $(TEST_SESSION_OBJ) src/session/sea_session.o src/core/sea_arena.o src/core/sea_log.o src/core/sea_db.o src/brain/sea_agent.o src/senses/sea_http.o src/senses/sea_json.o src/shield/sea_shield.o
+$(TESTBIN_SESSION): $(TEST_SESSION_OBJ) src/session/sea_session.o src/core/sea_arena.o src/core/sea_log.o src/core/sea_db.o src/brain/sea_agent.o src/senses/sea_http.o src/senses/sea_json.o src/shield/sea_shield.o src/pii/sea_pii.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
 $(TESTBIN_MEMORY): $(TEST_MEMORY_OBJ) src/memory/sea_memory.o src/core/sea_arena.o src/core/sea_log.o
@@ -316,13 +327,16 @@ $(TESTBIN_SKILL): $(TEST_SKILL_OBJ) src/skills/sea_skill.o src/core/sea_arena.o 
 $(TESTBIN_RECALL): $(TEST_RECALL_OBJ) src/recall/sea_recall.o src/core/sea_arena.o src/core/sea_log.o src/core/sea_db.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
+$(TESTBIN_PII): $(TEST_PII_OBJ) src/pii/sea_pii.o src/core/sea_arena.o src/core/sea_log.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
+
 $(TESTBIN_BENCH): $(TEST_BENCH_OBJ) src/core/sea_arena.o src/core/sea_log.o src/senses/sea_json.o src/shield/sea_shield.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
 # ── Clean ─────────────────────────────────────────────────────
 
 clean:
-	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_BENCH)
+	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII) $(TESTBIN_BENCH)
 	find src tests -name '*.o' -delete 2>/dev/null || true
 	@echo "  Cleaned."
 
