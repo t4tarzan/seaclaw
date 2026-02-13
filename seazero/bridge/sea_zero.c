@@ -17,6 +17,7 @@
 #include "seaclaw/sea_json.h"
 #include "seaclaw/sea_log.h"
 #include "seaclaw/sea_shield.h"
+#include "seaclaw/sea_pii.h"
 #include "seaclaw/sea_tools.h"
 
 #include <stdio.h>
@@ -27,6 +28,7 @@
 #define SEAZERO_DEFAULT_TIMEOUT 120
 #define SEAZERO_MAX_TASK_LEN    8192
 #define SEAZERO_MAX_CONTEXT_LEN 16384
+#define SEAZERO_MAX_OUTPUT_LEN  65536  /* 64KB max Agent Zero response */
 
 /* ── Config ────────────────────────────────────────────────── */
 
@@ -180,11 +182,30 @@ SeaZeroResult sea_zero_delegate(
         return result;
     }
 
+    /* Output size limit — prevent memory abuse */
+    if (result_slice.len > SEAZERO_MAX_OUTPUT_LEN) {
+        SEA_LOG_WARN("SEAZERO", "Agent Zero output too large: %u bytes (max %u)",
+                     result_slice.len, SEAZERO_MAX_OUTPUT_LEN);
+        result.error = "Agent Zero output exceeds size limit (64KB)";
+        return result;
+    }
+
     /* Validate output through Grammar Shield (output injection detection) */
     if (sea_shield_detect_output_injection(result_slice)) {
         SEA_LOG_WARN("SEAZERO", "Grammar Shield blocked Agent Zero output (injection detected)");
         result.error = "Agent Zero output blocked by Grammar Shield";
         return result;
+    }
+
+    /* PII filter — redact any leaked sensitive data from Agent Zero output */
+    if (sea_pii_contains(result_slice, SEA_PII_ALL)) {
+        SEA_LOG_WARN("SEAZERO", "PII detected in Agent Zero output — redacting");
+        const char* redacted = sea_pii_redact(result_slice, SEA_PII_ALL, arena);
+        if (redacted) {
+            result.success = true;
+            result.result  = redacted;
+            return result;
+        }
     }
 
     /* Copy result to arena */

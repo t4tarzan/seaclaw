@@ -363,7 +363,7 @@ $(TESTBIN_PII): $(TEST_PII_OBJ) src/pii/sea_pii.o src/core/sea_arena.o src/core/
 $(TESTBIN_BENCH): $(TEST_BENCH_OBJ) src/core/sea_arena.o src/core/sea_log.o src/senses/sea_json.o src/shield/sea_shield.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
-$(TESTBIN_SEAZERO): $(TEST_SEAZERO_OBJ) src/core/sea_arena.o src/core/sea_log.o src/core/sea_db.o src/senses/sea_json.o src/senses/sea_http.o src/shield/sea_shield.o seazero/bridge/sea_zero.o
+$(TESTBIN_SEAZERO): $(TEST_SEAZERO_OBJ) src/core/sea_arena.o src/core/sea_log.o src/core/sea_db.o src/senses/sea_json.o src/senses/sea_http.o src/shield/sea_shield.o src/pii/sea_pii.o seazero/bridge/sea_zero.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
 # ── Clean ─────────────────────────────────────────────────────

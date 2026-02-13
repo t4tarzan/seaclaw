@@ -1,0 +1,106 @@
+{
+    "defaultAction": "SCMP_ACT_ERRNO",
+    "archMap": [
+        { "architecture": "SCMP_ARCH_X86_64", "subArchitectures": ["SCMP_ARCH_X86"] },
+        { "architecture": "SCMP_ARCH_AARCH64", "subArchitectures": ["SCMP_ARCH_ARM"] }
+    ],
+    "syscalls": [
+        {
+            "comment": "Basic process lifecycle",
+            "names": [
+                "read", "write", "close", "fstat", "lstat", "stat",
+                "lseek", "mmap", "mprotect", "munmap", "brk",
+                "rt_sigaction", "rt_sigprocmask", "rt_sigreturn",
+                "ioctl", "access", "pipe", "pipe2",
+                "select", "pselect6", "poll", "ppoll",
+                "dup", "dup2", "dup3",
+                "nanosleep", "clock_nanosleep", "clock_gettime", "clock_getres",
+                "getpid", "getppid", "getuid", "geteuid", "getgid", "getegid",
+                "gettid", "getgroups",
+                "exit", "exit_group",
+                "wait4", "waitid"
+            ],
+            "action": "SCMP_ACT_ALLOW"
+        },
+        {
+            "comment": "File operations (workspace access)",
+            "names": [
+                "open", "openat", "creat",
+                "readv", "writev", "pread64", "pwrite64",
+                "readlink", "readlinkat",
+                "getcwd", "chdir", "fchdir",
+                "rename", "renameat", "renameat2",
+                "mkdir", "mkdirat", "rmdir",
+                "unlink", "unlinkat",
+                "link", "linkat", "symlink", "symlinkat",
+                "chmod", "fchmod", "fchmodat",
+                "chown", "fchown", "fchownat", "lchown",
+                "umask", "statfs", "fstatfs",
+                "getdents", "getdents64",
+                "newfstatat", "statx",
+                "fcntl", "flock",
+                "truncate", "ftruncate",
+                "fallocate", "copy_file_range",
+                "sendfile"
+            ],
+            "action": "SCMP_ACT_ALLOW"
+        },
+        {
+            "comment": "Memory management",
+            "names": [
+                "madvise", "mremap", "msync",
+                "mincore", "memfd_create",
+                "set_tid_address", "set_robust_list",
+                "futex", "get_robust_list",
+                "sched_getaffinity", "sched_yield"
+            ],
+            "action": "SCMP_ACT_ALLOW"
+        },
+        {
+            "comment": "Network (HTTP to SeaClaw proxy + internet)",
+            "names": [
+                "socket", "connect", "bind", "listen", "accept", "accept4",
+                "sendto", "recvfrom", "sendmsg", "recvmsg",
+                "shutdown", "getsockname", "getpeername",
+                "setsockopt", "getsockopt",
+                "epoll_create", "epoll_create1", "epoll_ctl", "epoll_wait", "epoll_pwait",
+                "eventfd", "eventfd2"
+            ],
+            "action": "SCMP_ACT_ALLOW"
+        },
+        {
+            "comment": "Process execution (Python, pip, tools)",
+            "names": [
+                "execve", "execveat",
+                "clone", "clone3", "fork", "vfork",
+                "arch_prctl", "prctl",
+                "sigaltstack",
+                "getrlimit", "setrlimit", "prlimit64",
+                "getrusage",
+                "sysinfo", "uname",
+                "getrandom"
+            ],
+            "action": "SCMP_ACT_ALLOW"
+        },
+        {
+            "comment": "Signals",
+            "names": [
+                "kill", "tgkill", "tkill",
+                "rt_sigqueueinfo", "rt_tgsigqueueinfo",
+                "signalfd", "signalfd4"
+            ],
+            "action": "SCMP_ACT_ALLOW"
+        },
+        {
+            "comment": "Misc required by Python/glibc",
+            "names": [
+                "sched_setaffinity",
+                "rseq",
+                "pkey_alloc", "pkey_free", "pkey_mprotect",
+                "timerfd_create", "timerfd_settime", "timerfd_gettime",
+                "inotify_init", "inotify_init1", "inotify_add_watch", "inotify_rm_watch"
+            ],
+            "action": "SCMP_ACT_ALLOW"
+        }
+    ]
+}

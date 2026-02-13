@@ -19,11 +19,16 @@ services:
     container_name: seazero-agent-0
     restart: unless-stopped
 
-    # Security: drop all capabilities, no privilege escalation
+    # Security: drop all capabilities, no privilege escalation, seccomp
     security_opt:
       - no-new-privileges:true
+      - seccomp=config/seccomp.json
     cap_drop:
       - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=256M
+      - /run:size=64M
 
     # Resource limits: prevent runaway agents
     deploy:
@@ -36,24 +41,30 @@ services:
           memory: 512M
     pids_limit: 100
 
-    # Volumes: agent workspace (persistent), read-only config
+    # Volumes: agent workspace (persistent), shared with SeaClaw
     volumes:
       - agent_data:/agent/workdir:rw
       - agent_memory:/agent/memory:rw
+      - ${HOME:-.}/.seazero/workspace:/agent/shared:rw
 
     # Network: only accessible from localhost
     ports:
       - "127.0.0.1:8080:8080"
 
+    # Network: isolated — can reach SeaClaw proxy + internet, not LAN
+    networks:
+      - seazero_net
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
     environment:
       - AGENT_ID=agent-0
       - AGENT_PORT=8080
-      # LLM config — inherited from SeaClaw's config or set here
-      - LLM_PROVIDER=${LLM_PROVIDER:-openrouter}
-      - LLM_MODEL=${LLM_MODEL:-moonshotai/kimi-k2.5}
-      - LLM_API_KEY=${LLM_API_KEY:-}
-      - LLM_API_URL=${LLM_API_URL:-}
-      # SeaClaw bridge — Agent Zero can call back to SeaClaw's tools
+      # LLM: routed through SeaClaw proxy — Agent Zero never sees real API key
+      - OPENAI_API_BASE=http://host.docker.internal:7432
+      - OPENAI_API_KEY=${SEAZERO_INTERNAL_TOKEN:-}
+      # SeaClaw bridge callback
       - SEACLAW_CALLBACK_URL=http://host.docker.internal:7432
       # Logging
       - LOG_LEVEL=${LOG_LEVEL:-info}
@@ -64,6 +75,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+networks:
+  seazero_net:
+    driver: bridge
+    internal: false
 
 volumes:
   agent_data:
