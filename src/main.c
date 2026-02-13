@@ -27,6 +27,8 @@
 #include "seaclaw/sea_recall.h"
 #include "seaclaw/sea_pii.h"
 #include "seaclaw/sea_mesh.h"
+#include "sea_zero.h"
+#include "sea_proxy.h"
 #include <pthread.h>
 
 #include <stdio.h>
@@ -1401,6 +1403,44 @@ int main(int argc, char** argv) {
         SEA_LOG_INFO("RECALL", "Memory index ready (%u facts)", sea_recall_count(s_recall));
     }
 
+    /* Initialize SeaZero (Agent Zero integration — opt-in) */
+    {
+        SeaArena sz_arena;
+        sea_arena_create(&sz_arena, 4096);
+        const char* sz_enabled = s_db ? sea_db_config_get(s_db, "seazero_enabled", &sz_arena) : NULL;
+        if (sz_enabled && strcmp(sz_enabled, "true") == 0) {
+            const char* sz_token = sea_db_config_get(s_db, "seazero_internal_token", &sz_arena);
+            const char* sz_url   = sea_db_config_get(s_db, "seazero_agent_url", &sz_arena);
+            const char* sz_budget = sea_db_config_get(s_db, "seazero_token_budget", &sz_arena);
+
+            /* Initialize bridge */
+            SeaZeroConfig zcfg = {0};
+            sea_zero_init(&zcfg, sz_url);
+            sea_zero_register_tool(&zcfg);
+
+            /* Start LLM proxy if we have an API key */
+            if (s_agent_cfg.api_key && *s_agent_cfg.api_key) {
+                SeaProxyConfig pcfg = {
+                    .port            = 7432,
+                    .internal_token  = sz_token,
+                    .real_api_url    = s_agent_cfg.api_url ? s_agent_cfg.api_url : "https://openrouter.ai/api/v1/chat/completions",
+                    .real_api_key    = s_agent_cfg.api_key,
+                    .real_provider   = s_config.llm_provider,
+                    .real_model      = s_config.llm_model,
+                    .daily_token_budget = sz_budget ? atoll(sz_budget) : 100000,
+                    .db              = s_db,
+                    .enabled         = true
+                };
+                if (sea_proxy_start(&pcfg) == 0) {
+                    SEA_LOG_INFO("SEAZERO", "LLM proxy active on 127.0.0.1:7432");
+                }
+            }
+
+            SEA_LOG_INFO("SEAZERO", "Agent Zero integration enabled (tool #58)");
+        }
+        sea_arena_destroy(&sz_arena);
+    }
+
     /* Initialize mesh engine if --mode specified */
     if (s_mesh_mode && s_mesh_role_str) {
         SeaMeshConfig mcfg;
@@ -1466,6 +1506,7 @@ int main(int argc, char** argv) {
 
     printf("\n");
     SEA_LOG_INFO("SYSTEM", "Shutting down...");
+    sea_proxy_stop(); /* Stop LLM proxy if running (no-op if not started) */
     if (s_mesh) { sea_mesh_destroy(s_mesh); s_mesh = NULL; }
     if (s_usage) { sea_usage_save(s_usage); s_usage = NULL; }
     if (s_recall) { sea_recall_destroy(s_recall); s_recall = NULL; }

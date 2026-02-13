@@ -179,7 +179,8 @@ HANDS_SRC := \
 	src/hands/impl/tool_recall.c
 
 SEAZERO_SRC := \
-	seazero/bridge/sea_zero.c
+	seazero/bridge/sea_zero.c \
+	seazero/bridge/sea_proxy.c
 
 MAIN_SRC := src/main.c
 
