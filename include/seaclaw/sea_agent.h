@@ -23,6 +23,7 @@ typedef enum {
     SEA_LLM_GEMINI,        /* Google Gemini API (gemini-2.5-pro)    */
     SEA_LLM_OPENROUTER,    /* OpenRouter API (any model)            */
     SEA_LLM_LOCAL,         /* Local OpenAI-compatible (ollama, etc) */
+    SEA_LLM_ZAI,          /* Z.AI GLM-5 (coding endpoint)         */
 } SeaLlmProvider;
 
 /* ── Think Level ─────────────────────────────────────────── */

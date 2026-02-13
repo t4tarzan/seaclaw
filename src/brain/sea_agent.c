@@ -54,6 +54,7 @@ void sea_agent_defaults(SeaAgentConfig* cfg) {
             case SEA_LLM_GEMINI:     cfg->api_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"; break;
             case SEA_LLM_OPENROUTER: cfg->api_url = "https://openrouter.ai/api/v1/chat/completions"; break;
             case SEA_LLM_LOCAL:      cfg->api_url = "http://localhost:11434/v1/chat/completions"; break;
+            case SEA_LLM_ZAI:        cfg->api_url = "https://api.z.ai/api/coding/paas/v4/chat/completions"; break;
         }
     }
     if (!cfg->model) {
@@ -63,6 +64,7 @@ void sea_agent_defaults(SeaAgentConfig* cfg) {
             case SEA_LLM_GEMINI:     cfg->model = "gemini-2.0-flash"; break;
             case SEA_LLM_OPENROUTER: cfg->model = "moonshotai/kimi-k2.5"; break;
             case SEA_LLM_LOCAL:      cfg->model = "llama3"; break;
+            case SEA_LLM_ZAI:        cfg->model = "glm-5"; break;
         }
     }
     if (cfg->max_tokens == 0) cfg->max_tokens = 4096;
@@ -82,6 +84,7 @@ void sea_agent_init(SeaAgentConfig* cfg) {
         case SEA_LLM_GEMINI:     prov_name = "Gemini"; break;
         case SEA_LLM_OPENROUTER: prov_name = "OpenRouter"; break;
         case SEA_LLM_LOCAL:      prov_name = "Local"; break;
+        case SEA_LLM_ZAI:        prov_name = "Z.AI"; break;
     }
     SEA_LOG_INFO("AGENT", "Provider: %s, Model: %s", prov_name, cfg->model);
 }
