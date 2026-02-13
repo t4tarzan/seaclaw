@@ -538,6 +538,105 @@ We provide:
 
 ---
 
+## C + Python — SeaZero Hybrid AI
+
+> *The discipline of C. The autonomy of Python. One command to install.*
+
+SeaZero combines SeaClaw (C11 orchestrator) with [Agent Zero](https://github.com/frdel/agent-zero) (Python autonomous agent) into a hybrid platform. C handles orchestration, security, and memory. Python handles open-ended reasoning and code generation. Agent Zero runs in a Docker container — isolated, budget-controlled, and never sees your real API keys.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  SeaClaw (C11, ~203KB)                        │
+│                                                              │
+│  Arena Memory │ Grammar Shield │ LLM Proxy │ 58 Tools       │
+│  (zero malloc)│ (byte-level)   │ (port 7432)│ (compiled in)  │
+│               │                │            │                │
+│  SQLite v3 DB │ PII Filter     │ Workspace  │ Tool #58:      │
+│  (8 tables)   │ (redact all)   │ Manager    │ agent_zero     │
+├───────────────┴────────────────┴──────┬─────┴────────────────┤
+│                                       │                      │
+│            HTTP JSON Bridge           │   8 Security Layers  │
+│                                       │                      │
+├───────────────────────────────────────┼──────────────────────┤
+│         Docker Container (isolated)   │                      │
+│                                       ▼                      │
+│   Agent Zero (Python)                                        │
+│   • Autonomous reasoning + code generation                   │
+│   • LLM via SeaClaw proxy ONLY (never sees real API key)     │
+│   • Seccomp + read-only rootfs + network isolation           │
+│   • Shared workspace for file delivery                       │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### How It Works
+
+| Step | What Happens |
+|------|-------------|
+| **1. Install** | `curl -fsSL .../install.sh \| bash` — installer offers optional Agent Zero setup |
+| **2. Token** | Generates a secure internal bridge token (`openssl rand -hex 32`) |
+| **3. Proxy** | SeaClaw starts LLM proxy on `127.0.0.1:7432` — validates token, enforces daily budget |
+| **4. Container** | Agent Zero runs in Docker with seccomp, read-only rootfs, no-new-privileges |
+| **5. Delegate** | User types `/delegate <task>` — SeaClaw sends task to Agent Zero via HTTP bridge |
+| **6. Execute** | Agent Zero reasons autonomously, calls LLM through SeaClaw's proxy (never sees real key) |
+| **7. Filter** | Output passes through: size limit (64KB) → Grammar Shield → PII filter → user |
+| **8. Audit** | Every task, LLM call, and security event logged to SQLite |
+
+### 8-Layer Security Model
+
+```
+Layer 1 │ Docker Isolation     Seccomp profile, read-only rootfs, no-new-privileges
+Layer 2 │ Network Isolation    Bridge network, DNS to 8.8.8.8/1.1.1.1 only
+Layer 3 │ Credential Isolation Agent Zero only has internal token, never real API keys
+Layer 4 │ Token Budget         Daily limit (default 100K tokens/day) enforced by proxy
+Layer 5 │ Grammar Shield       Byte-level validation of all Agent Zero output
+Layer 6 │ PII Filter           Redacts leaked emails, phones, SSNs, credit cards, IPs
+Layer 7 │ Output Size Limit    64KB max response from Agent Zero
+Layer 8 │ Full Audit Trail     Every event logged to SQLite with timestamps
+```
+
+### TUI Commands
+
+```
+🦀 > /agents                         # List Agent Zero instances
+🦀 > /delegate Write a Python script  # Delegate task to Agent Zero
+🦀 > /sztasks                        # Show delegated task history
+🦀 > /usage                          # LLM token usage (SeaClaw vs Agent Zero)
+🦀 > /audit                          # Recent security events
+```
+
+### Why C + Python?
+
+| Aspect | C (SeaClaw) | Python (Agent Zero) |
+|--------|-------------|---------------------|
+| **Role** | Orchestrator, security, memory | Autonomous executor, reasoning |
+| **Binary** | ~203KB, starts in <1ms | Docker container, ~500MB |
+| **Memory** | Arena allocation, zero leaks | GC-managed, budget-controlled by C |
+| **Security** | Grammar Shield, byte-level | Sandboxed in Docker |
+| **LLM Access** | Direct API calls | Via C proxy only (never sees real key) |
+| **Tools** | 57 compiled-in (static) | Dynamic (code generation) |
+| **Speed** | μs-level operations | ms-level operations |
+
+### Quick Start
+
+```bash
+# Install with Agent Zero support
+curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh | bash
+# → Select "Yes" when asked about Agent Zero
+
+# Pull the Agent Zero Docker image
+cd ~/seaclaw && make seazero-setup
+
+# Start using it
+sea_claw
+🦀 > /delegate Analyze the CSV files in /tmp and create a summary report
+```
+
+📄 **Full documentation:** [docs/SEAZERO_FLOW.md](docs/SEAZERO_FLOW.md)
+
+---
+
 ## License
 
 MIT
