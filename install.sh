@@ -1,17 +1,38 @@
 #!/usr/bin/env bash
 # Sea-Claw Interactive Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh | bash
+# One-command install:
+#   curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh | bash
 #
 # Features:
 #   - Interactive setup wizard with arrow-key menus
 #   - LLM provider selection (OpenRouter, OpenAI, Gemini, Anthropic, Local)
 #   - API key configuration
 #   - Optional Telegram bot setup
+#   - Optional Agent Zero (SeaZero) integration
 #   - Optional fallback provider chain
 #   - Builds from source, runs tests, installs binary
 #   - Launches TUI on completion
 
 set -euo pipefail
+
+# ── TTY Bootstrap ───────────────────────────────────────────
+# When piped via `curl ... | bash`, stdin is the pipe — not the terminal.
+# We detect this and re-download the script to a temp file, then re-exec
+# with /dev/tty as stdin so interactive menus and prompts work.
+if [[ ! -t 0 ]]; then
+    TMPSCRIPT=$(mktemp /tmp/seaclaw-install.XXXXXX.sh)
+    SCRIPT_URL="${SEACLAW_INSTALL_URL:-https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh}"
+    if command -v curl &>/dev/null; then
+        curl -fsSL "$SCRIPT_URL" > "$TMPSCRIPT"
+    elif command -v wget &>/dev/null; then
+        wget -qO- "$SCRIPT_URL" > "$TMPSCRIPT"
+    else
+        echo "Error: curl or wget required for piped install" >&2
+        exit 1
+    fi
+    chmod +x "$TMPSCRIPT"
+    exec bash "$TMPSCRIPT" </dev/tty
+fi
 
 # ── Colors & Formatting ──────────────────────────────────────
 RED='\033[0;31m'
@@ -40,10 +61,10 @@ show_banner() {
     echo -e "${BOLD}${CYAN}"
     echo "    ╔═══════════════════════════════════════════╗"
     echo "    ║                                           ║"
-    echo "    ║   🦀  Sea-Claw Installer  v2.0.0         ║"
+    echo "    ║   🦀  Sea-Claw Installer  v3.0.0         ║"
     echo "    ║                                           ║"
     echo "    ║   Sovereign AI Agent Platform             ║"
-    echo "    ║   Pure C11 · 56 Tools · Zero Dependencies ║"
+    echo "    ║   Pure C11 · 58 Tools · Zero Dependencies ║"
     echo "    ║                                           ║"
     echo "    ╚═══════════════════════════════════════════╝"
     echo -e "${RESET}"
@@ -80,10 +101,10 @@ menu_select() {
     done
 
     while true; do
-        # Read single keypress
-        IFS= read -rsn1 key
+        # Read single keypress (from /dev/tty for pipe compatibility)
+        IFS= read -rsn1 key </dev/tty
         if [[ "$key" == $'\x1b' ]]; then
-            read -rsn2 key
+            read -rsn2 key </dev/tty
             case "$key" in
                 '[A') # Up arrow
                     ((selected > 0)) && ((selected--))
@@ -129,7 +150,7 @@ read_secret() {
     else
         echo -en "  ${BOLD}$prompt${RESET}: "
     fi
-    read -rs _out
+    read -rs _out </dev/tty
     echo ""
 
     if [[ -z "$_out" && -n "$default" ]]; then
@@ -148,7 +169,7 @@ read_input() {
     else
         echo -en "  ${BOLD}$prompt${RESET}: "
     fi
-    read -r _out
+    read -r _out </dev/tty
 
     if [[ -z "$_out" && -n "$default" ]]; then
         _out="$default"
@@ -166,7 +187,7 @@ confirm() {
     else
         echo -en "  ${BOLD}$prompt${RESET} ${DIM}[y/N]:${RESET} "
     fi
-    read -r yn
+    read -r yn </dev/tty
     yn="${yn:-$default}"
     [[ "${yn,,}" == "y" || "${yn,,}" == "yes" ]]
 }
@@ -398,7 +419,7 @@ if confirm "Add fallback LLM providers? (recommended)" "y"; then
 fi
 
 # ── Step 5: Telegram Bot Setup ───────────────────────────────
-header "Step 5/6 — Telegram Bot (Optional)"
+header "Step 5/7 — Telegram Bot (Optional)"
 
 echo -e "  ${DIM}Connect a Telegram bot for mobile/remote access.${RESET}"
 echo -e "  ${DIM}Create one at: ${CYAN}https://t.me/BotFather${RESET}"
@@ -425,8 +446,51 @@ else
     info "Skipped — you can add Telegram later in the config"
 fi
 
-# ── Step 6: Write Config & Launch ────────────────────────────
-header "Step 6/6 — Saving Configuration"
+# ── Step 6: Agent Zero Integration (Optional) ───────────────
+header "Step 6/7 — Agent Zero (Optional)"
+
+echo -e "  ${DIM}Agent Zero is an autonomous Python AI agent that runs in Docker.${RESET}"
+echo -e "  ${DIM}SeaClaw delegates complex tasks to it while staying in control.${RESET}"
+echo -e "  ${DIM}Requires: Docker installed and running.${RESET}"
+echo ""
+
+SEAZERO_ENABLED="false"
+SEAZERO_TOKEN=""
+SEAZERO_AGENT_URL="http://localhost:8080"
+
+if confirm "Enable Agent Zero integration?" "n"; then
+    # Check Docker
+    if command -v docker &>/dev/null; then
+        ok "Docker found: $(docker --version | head -c 40)"
+    else
+        warn "Docker not found — you'll need to install it before using Agent Zero"
+        warn "Install: https://docs.docker.com/get-docker/"
+    fi
+
+    SEAZERO_ENABLED="true"
+
+    # Generate internal bridge token
+    if command -v openssl &>/dev/null; then
+        SEAZERO_TOKEN=$(openssl rand -hex 32)
+    else
+        SEAZERO_TOKEN=$(head -c 32 /dev/urandom | xxd -p | tr -d '\n' | head -c 64)
+    fi
+    ok "Internal bridge token generated"
+
+    # Agent Zero URL
+    read_input SEAZERO_AGENT_URL "Agent Zero URL" "http://localhost:8080"
+    ok "Agent Zero URL: $SEAZERO_AGENT_URL"
+
+    echo ""
+    info "Agent Zero will use your same LLM provider via SeaClaw's proxy"
+    info "Agent Zero never sees your real API key"
+    info "Run 'make seazero-setup' after install to pull the Docker image"
+else
+    info "Skipped — you can enable Agent Zero later with 'make seazero-setup'"
+fi
+
+# ── Step 7: Write Config & Launch ────────────────────────────
+header "Step 7/7 — Saving Configuration"
 
 CONFIG_DIR="$HOME/.config/seaclaw"
 CONFIG_FILE="$CONFIG_DIR/config.json"
@@ -474,6 +538,33 @@ fi
 
 ok "Environment saved: $ENV_FILE"
 
+# Write SeaZero config into database (if enabled)
+if [[ "$SEAZERO_ENABLED" == "true" ]]; then
+    if command -v sqlite3 &>/dev/null; then
+        sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO config (key, value, updated_at) VALUES ('seazero_enabled', 'true', datetime('now'));"
+        sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO config (key, value, updated_at) VALUES ('seazero_internal_token', '$SEAZERO_TOKEN', datetime('now'));"
+        sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO config (key, value, updated_at) VALUES ('seazero_agent_url', '$SEAZERO_AGENT_URL', datetime('now'));"
+        sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO config (key, value, updated_at) VALUES ('seazero_token_budget', '100000', datetime('now'));"
+        ok "SeaZero config saved to database"
+    else
+        warn "sqlite3 not found — SeaZero config will need manual setup"
+        info "Run: sea_claw --config $CONFIG_FILE  (it will create the DB)"
+        info "Then set seazero_enabled=true in the config table"
+    fi
+
+    # Write Agent Zero env file
+    SEAZERO_ENV_DIR="$CONFIG_DIR/seazero"
+    mkdir -p "$SEAZERO_ENV_DIR"
+    cat > "$SEAZERO_ENV_DIR/agent-zero.env" << SZEOF
+# Agent Zero Environment — auto-generated by Sea-Claw installer
+# Agent Zero talks to SeaClaw's LLM proxy, never the real API
+OPENAI_API_BASE=http://host.docker.internal:7432
+OPENAI_API_KEY=$SEAZERO_TOKEN
+SEACLAW_CALLBACK_URL=http://host.docker.internal:7432
+SZEOF
+    ok "Agent Zero env saved: $SEAZERO_ENV_DIR/agent-zero.env"
+fi
+
 # ── Summary & Launch ─────────────────────────────────────────
 echo ""
 divider
@@ -489,6 +580,10 @@ echo -e "    ${BOLD}Fallbacks:${RESET} configured"
 fi
 if [[ -n "$TG_TOKEN" ]]; then
 echo -e "    ${BOLD}Telegram:${RESET}  enabled (chat: $TG_CHAT_ID)"
+fi
+if [[ "$SEAZERO_ENABLED" == "true" ]]; then
+echo -e "    ${BOLD}Agent Zero:${RESET} enabled (proxy: 127.0.0.1:7432)"
+echo -e "    ${DIM}             Run 'make seazero-setup' to pull Docker image${RESET}"
 fi
 echo ""
 echo -e "    ${DIM}Docs:${RESET} https://seaclaw.virtualgpt.cloud"
@@ -514,7 +609,7 @@ case "$LAUNCH_CHOICE" in
     "Launch Sea-Claw TUI (interactive mode)")
         echo ""
         info "Starting Sea-Claw TUI..."
-        echo -e "  ${DIM}Type /help for commands, /tools to see all 56 tools${RESET}"
+        echo -e "  ${DIM}Type /help for commands, /tools to see all 58 tools${RESET}"
         echo ""
         exec sea_claw --config "$CONFIG_FILE"
         ;;

@@ -58,7 +58,77 @@ static const char* SCHEMA_SQL =
     ");"
     "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);"
     "CREATE INDEX IF NOT EXISTS idx_chat_history_chat ON chat_history(chat_id);"
-    "CREATE INDEX IF NOT EXISTS idx_trajectory_type ON trajectory(entry_type);";
+    "CREATE INDEX IF NOT EXISTS idx_trajectory_type ON trajectory(entry_type);"
+
+    /* ── SeaZero v3 Tables ─────────────────────────────────── */
+
+    "CREATE TABLE IF NOT EXISTS schema_version ("
+    "  version    TEXT NOT NULL,"
+    "  applied_at DATETIME DEFAULT (datetime('now'))"
+    ");"
+
+    "CREATE TABLE IF NOT EXISTS seazero_agents ("
+    "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "  agent_id   TEXT NOT NULL UNIQUE,"
+    "  status     TEXT NOT NULL DEFAULT 'stopped',"
+    "  container  TEXT,"
+    "  port       INTEGER,"
+    "  provider   TEXT,"
+    "  model      TEXT,"
+    "  created_at DATETIME DEFAULT (datetime('now')),"
+    "  last_seen  DATETIME DEFAULT (datetime('now'))"
+    ");"
+
+    "CREATE TABLE IF NOT EXISTS seazero_tasks ("
+    "  id           INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "  task_id      TEXT NOT NULL UNIQUE,"
+    "  agent_id     TEXT NOT NULL,"
+    "  chat_id      INTEGER,"
+    "  status       TEXT NOT NULL DEFAULT 'pending',"
+    "  task_text    TEXT NOT NULL,"
+    "  context      TEXT,"
+    "  result       TEXT,"
+    "  error        TEXT,"
+    "  steps_taken  INTEGER DEFAULT 0,"
+    "  files        TEXT,"
+    "  created_at   DATETIME DEFAULT (datetime('now')),"
+    "  started_at   DATETIME,"
+    "  completed_at DATETIME,"
+    "  elapsed_sec  REAL DEFAULT 0"
+    ");"
+
+    "CREATE TABLE IF NOT EXISTS seazero_llm_usage ("
+    "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "  caller     TEXT NOT NULL,"
+    "  provider   TEXT NOT NULL,"
+    "  model      TEXT NOT NULL,"
+    "  tokens_in  INTEGER DEFAULT 0,"
+    "  tokens_out INTEGER DEFAULT 0,"
+    "  cost_usd   REAL DEFAULT 0,"
+    "  latency_ms INTEGER DEFAULT 0,"
+    "  status     TEXT DEFAULT 'ok',"
+    "  task_id    TEXT,"
+    "  created_at DATETIME DEFAULT (datetime('now'))"
+    ");"
+
+    "CREATE TABLE IF NOT EXISTS seazero_audit ("
+    "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "  event_type TEXT NOT NULL,"
+    "  source     TEXT NOT NULL,"
+    "  target     TEXT,"
+    "  detail     TEXT,"
+    "  severity   TEXT DEFAULT 'info',"
+    "  created_at DATETIME DEFAULT (datetime('now'))"
+    ");"
+
+    "CREATE INDEX IF NOT EXISTS idx_sz_tasks_status ON seazero_tasks(status);"
+    "CREATE INDEX IF NOT EXISTS idx_sz_tasks_agent ON seazero_tasks(agent_id);"
+    "CREATE INDEX IF NOT EXISTS idx_sz_tasks_chat ON seazero_tasks(chat_id);"
+    "CREATE INDEX IF NOT EXISTS idx_sz_llm_caller ON seazero_llm_usage(caller);"
+    "CREATE INDEX IF NOT EXISTS idx_sz_llm_task ON seazero_llm_usage(task_id);"
+    "CREATE INDEX IF NOT EXISTS idx_sz_audit_type ON seazero_audit(event_type);"
+    "CREATE INDEX IF NOT EXISTS idx_sz_audit_source ON seazero_audit(source);"
+    "CREATE INDEX IF NOT EXISTS idx_sz_agents_status ON seazero_agents(status);";
 
 /* ── Lifecycle ────────────────────────────────────────────── */
 
@@ -378,4 +448,375 @@ SeaError sea_db_exec(SeaDb* db, const char* sql) {
     }
 
     return SEA_OK;
+}
+
+/* ── SeaZero v3: Agent Management ────────────────────────── */
+
+SeaError sea_db_sz_agent_register(SeaDb* db, const char* agent_id,
+                                   const char* container, i32 port,
+                                   const char* provider, const char* model) {
+    if (!db || !agent_id) return SEA_ERR_IO;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "INSERT INTO seazero_agents (agent_id, status, container, port, provider, model) "
+        "VALUES (?, 'ready', ?, ?, ?, ?) "
+        "ON CONFLICT(agent_id) DO UPDATE SET "
+        "status='ready', container=excluded.container, port=excluded.port, "
+        "provider=excluded.provider, model=excluded.model, last_seen=datetime('now')";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return SEA_ERR_IO;
+
+    sqlite3_bind_text(stmt, 1, agent_id, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, container, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 3, port);
+    sqlite3_bind_text(stmt, 4, provider ? provider : "", -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 5, model ? model : "", -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
+}
+
+SeaError sea_db_sz_agent_update_status(SeaDb* db, const char* agent_id,
+                                        const char* status) {
+    if (!db || !agent_id || !status) return SEA_ERR_IO;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "UPDATE seazero_agents SET status=?, last_seen=datetime('now') WHERE agent_id=?";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return SEA_ERR_IO;
+
+    sqlite3_bind_text(stmt, 1, status, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, agent_id, -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
+}
+
+SeaError sea_db_sz_agent_heartbeat(SeaDb* db, const char* agent_id) {
+    if (!db || !agent_id) return SEA_ERR_IO;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "UPDATE seazero_agents SET last_seen=datetime('now') WHERE agent_id=?";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return SEA_ERR_IO;
+
+    sqlite3_bind_text(stmt, 1, agent_id, -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
+}
+
+i32 sea_db_sz_agent_list(SeaDb* db, SeaDbAgent* out, i32 max_count,
+                          SeaArena* arena) {
+    if (!db || !out || !arena || max_count <= 0) return 0;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "SELECT agent_id, status, container, port, provider, model, "
+        "created_at, last_seen FROM seazero_agents ORDER BY id";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return 0;
+
+    i32 count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        out[count].agent_id   = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 0));
+        out[count].status     = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 1));
+        out[count].container  = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 2));
+        out[count].port       = sqlite3_column_int(stmt, 3);
+        out[count].provider   = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 4));
+        out[count].model      = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 5));
+        out[count].created_at = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 6));
+        out[count].last_seen  = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 7));
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    return count;
+}
+
+/* ── SeaZero v3: Task Tracking ───────────────────────────── */
+
+SeaError sea_db_sz_task_create(SeaDb* db, const char* task_id,
+                                const char* agent_id, i64 chat_id,
+                                const char* task_text, const char* context) {
+    if (!db || !task_id || !agent_id || !task_text) return SEA_ERR_IO;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "INSERT INTO seazero_tasks (task_id, agent_id, chat_id, task_text, context) "
+        "VALUES (?, ?, ?, ?, ?)";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return SEA_ERR_IO;
+
+    sqlite3_bind_text(stmt, 1, task_id, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, agent_id, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 3, chat_id);
+    sqlite3_bind_text(stmt, 4, task_text, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 5, context, -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
+}
+
+SeaError sea_db_sz_task_start(SeaDb* db, const char* task_id) {
+    if (!db || !task_id) return SEA_ERR_IO;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "UPDATE seazero_tasks SET status='running', started_at=datetime('now') "
+        "WHERE task_id=?";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return SEA_ERR_IO;
+
+    sqlite3_bind_text(stmt, 1, task_id, -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
+}
+
+SeaError sea_db_sz_task_complete(SeaDb* db, const char* task_id,
+                                  const char* result, const char* files,
+                                  i32 steps_taken, f64 elapsed_sec) {
+    if (!db || !task_id) return SEA_ERR_IO;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "UPDATE seazero_tasks SET status='completed', result=?, files=?, "
+        "steps_taken=?, elapsed_sec=?, completed_at=datetime('now') "
+        "WHERE task_id=?";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return SEA_ERR_IO;
+
+    sqlite3_bind_text(stmt, 1, result, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, files, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 3, steps_taken);
+    sqlite3_bind_double(stmt, 4, elapsed_sec);
+    sqlite3_bind_text(stmt, 5, task_id, -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
+}
+
+SeaError sea_db_sz_task_fail(SeaDb* db, const char* task_id,
+                              const char* error, f64 elapsed_sec) {
+    if (!db || !task_id) return SEA_ERR_IO;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "UPDATE seazero_tasks SET status='failed', error=?, elapsed_sec=?, "
+        "completed_at=datetime('now') WHERE task_id=?";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return SEA_ERR_IO;
+
+    sqlite3_bind_text(stmt, 1, error, -1, SQLITE_STATIC);
+    sqlite3_bind_double(stmt, 2, elapsed_sec);
+    sqlite3_bind_text(stmt, 3, task_id, -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
+}
+
+i32 sea_db_sz_task_list(SeaDb* db, const char* status_filter,
+                         SeaDbSzTask* out, i32 max_count, SeaArena* arena) {
+    if (!db || !out || !arena || max_count <= 0) return 0;
+
+    sqlite3_stmt* stmt;
+    const char* sql;
+
+    if (status_filter) {
+        sql = "SELECT task_id, agent_id, chat_id, status, task_text, result, error, "
+              "steps_taken, elapsed_sec, created_at, completed_at "
+              "FROM seazero_tasks WHERE status=? ORDER BY id DESC LIMIT ?";
+    } else {
+        sql = "SELECT task_id, agent_id, chat_id, status, task_text, result, error, "
+              "steps_taken, elapsed_sec, created_at, completed_at "
+              "FROM seazero_tasks ORDER BY id DESC LIMIT ?";
+    }
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return 0;
+
+    int bind_idx = 1;
+    if (status_filter) {
+        sqlite3_bind_text(stmt, bind_idx++, status_filter, -1, SQLITE_STATIC);
+    }
+    sqlite3_bind_int(stmt, bind_idx, max_count);
+
+    i32 count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        out[count].task_id      = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 0));
+        out[count].agent_id     = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 1));
+        out[count].chat_id      = sqlite3_column_int64(stmt, 2);
+        out[count].status       = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 3));
+        out[count].task_text    = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 4));
+        out[count].result       = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 5));
+        out[count].error        = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 6));
+        out[count].steps_taken  = sqlite3_column_int(stmt, 7);
+        out[count].elapsed_sec  = sqlite3_column_double(stmt, 8);
+        out[count].created_at   = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 9));
+        out[count].completed_at = arena_strdup(arena, (const char*)sqlite3_column_text(stmt, 10));
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    return count;
+}
+
+/* ── SeaZero v3: LLM Usage Tracking ─────────────────────── */
+
+SeaError sea_db_sz_llm_log(SeaDb* db, const char* caller,
+                            const char* provider, const char* model,
+                            i32 tokens_in, i32 tokens_out,
+                            f64 cost_usd, i32 latency_ms,
+                            const char* status, const char* task_id) {
+    if (!db || !caller || !provider || !model) return SEA_ERR_IO;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "INSERT INTO seazero_llm_usage "
+        "(caller, provider, model, tokens_in, tokens_out, cost_usd, latency_ms, status, task_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return SEA_ERR_IO;
+
+    sqlite3_bind_text(stmt, 1, caller, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, provider, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, model, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 4, tokens_in);
+    sqlite3_bind_int(stmt, 5, tokens_out);
+    sqlite3_bind_double(stmt, 6, cost_usd);
+    sqlite3_bind_int(stmt, 7, latency_ms);
+    sqlite3_bind_text(stmt, 8, status ? status : "ok", -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 9, task_id, -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
+}
+
+i64 sea_db_sz_llm_total_tokens(SeaDb* db, const char* caller) {
+    if (!db || !caller) return 0;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "SELECT COALESCE(SUM(tokens_in + tokens_out), 0) FROM seazero_llm_usage "
+        "WHERE caller=? AND created_at >= date('now')";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return 0;
+
+    sqlite3_bind_text(stmt, 1, caller, -1, SQLITE_STATIC);
+
+    i64 total = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        total = sqlite3_column_int64(stmt, 0);
+    }
+
+    sqlite3_finalize(stmt);
+    return total;
+}
+
+/* ── SeaZero v3: Security Audit ──────────────────────────── */
+
+SeaError sea_db_sz_audit(SeaDb* db, const char* event_type,
+                          const char* source, const char* target,
+                          const char* detail, const char* severity) {
+    if (!db || !event_type || !source) return SEA_ERR_IO;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "INSERT INTO seazero_audit (event_type, source, target, detail, severity) "
+        "VALUES (?, ?, ?, ?, ?)";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return SEA_ERR_IO;
+
+    sqlite3_bind_text(stmt, 1, event_type, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, source, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, target, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 4, detail, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 5, severity ? severity : "info", -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
+}
+
+i32 sea_db_sz_audit_list(SeaDb* db, SeaDbAuditEvent* events, u32 max,
+                          SeaArena* arena) {
+    if (!db || !events || max == 0 || !arena) return 0;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "SELECT id, event_type, source, target, detail, severity, created_at "
+        "FROM seazero_audit ORDER BY id DESC LIMIT ?";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return 0;
+
+    sqlite3_bind_int(stmt, 1, (int)max);
+
+    i32 count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && (u32)count < max) {
+        events[count].id = sqlite3_column_int(stmt, 0);
+
+        const char* col_vals[6];
+        col_vals[0] = (const char*)sqlite3_column_text(stmt, 1);
+        col_vals[1] = (const char*)sqlite3_column_text(stmt, 2);
+        col_vals[2] = (const char*)sqlite3_column_text(stmt, 3);
+        col_vals[3] = (const char*)sqlite3_column_text(stmt, 4);
+        col_vals[4] = (const char*)sqlite3_column_text(stmt, 5);
+        col_vals[5] = (const char*)sqlite3_column_text(stmt, 6);
+
+        const char** dest_ptrs[6];
+        dest_ptrs[0] = &events[count].event_type;
+        dest_ptrs[1] = &events[count].source;
+        dest_ptrs[2] = &events[count].target;
+        dest_ptrs[3] = &events[count].detail;
+        dest_ptrs[4] = &events[count].severity;
+        dest_ptrs[5] = &events[count].created_at;
+
+        for (int ci = 0; ci < 6; ci++) {
+            if (col_vals[ci]) {
+                u64 slen = strlen(col_vals[ci]);
+                char* s = (char*)sea_arena_push(arena, slen + 1);
+                if (s) { memcpy(s, col_vals[ci], slen + 1); *dest_ptrs[ci] = s; }
+                else { *dest_ptrs[ci] = NULL; }
+            } else {
+                *dest_ptrs[ci] = NULL;
+            }
+        }
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    return count;
 }

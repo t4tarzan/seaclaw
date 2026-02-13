@@ -32,7 +32,7 @@ endif
 CC      := gcc
 CSTD    := -std=c11
 WARNS   := -Wall -Wextra -Werror -Wpedantic
-INCLUDES := -I./include
+INCLUDES := -I./include -I./seazero/bridge
 DEFINES  := -D_GNU_SOURCE
 
 # Base optimization
@@ -178,9 +178,14 @@ HANDS_SRC := \
 	src/hands/impl/tool_message.c \
 	src/hands/impl/tool_recall.c
 
+SEAZERO_SRC := \
+	seazero/bridge/sea_zero.c \
+	seazero/bridge/sea_proxy.c \
+	seazero/bridge/sea_workspace.c
+
 MAIN_SRC := src/main.c
 
-ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(A2A_SRC) $(BUS_SRC) $(CHANNEL_SRC) $(SESSION_SRC) $(MEMORY_SRC) $(CRON_SRC) $(SKILL_SRC) $(USAGE_SRC) $(RECALL_SRC) $(PII_SRC) $(MESH_SRC) $(HANDS_SRC) $(MAIN_SRC)
+ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(A2A_SRC) $(BUS_SRC) $(CHANNEL_SRC) $(SESSION_SRC) $(MEMORY_SRC) $(CRON_SRC) $(SKILL_SRC) $(USAGE_SRC) $(RECALL_SRC) $(PII_SRC) $(MESH_SRC) $(HANDS_SRC) $(SEAZERO_SRC) $(MAIN_SRC)
 ALL_OBJ := $(ALL_SRC:.c=.o)
 
 TEST_ARENA_SRC := tests/test_arena.c
@@ -222,6 +227,9 @@ TEST_PII_OBJ := $(TEST_PII_SRC:.c=.o)
 TEST_BENCH_SRC := tests/test_bench.c
 TEST_BENCH_OBJ := $(TEST_BENCH_SRC:.c=.o)
 
+TEST_SEAZERO_SRC := tests/test_seazero.c
+TEST_SEAZERO_OBJ := $(TEST_SEAZERO_SRC:.c=.o)
+
 # ── Output ────────────────────────────────────────────────────
 
 BIN     := sea_claw
@@ -239,10 +247,11 @@ TESTBIN_SKILL   := test_skill
 TESTBIN_RECALL  := test_recall
 TESTBIN_PII     := test_pii
 TESTBIN_BENCH   := test_bench
+TESTBIN_SEAZERO := test_seazero
 
 # ── Targets ───────────────────────────────────────────────────
 
-.PHONY: all clean test install release debug
+.PHONY: all clean test install release debug seazero-setup seazero-up seazero-down seazero-health seazero-spawn seazero-list
 
 all: $(BIN)
 	@echo ""
@@ -297,7 +306,7 @@ test-docker: clean $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_
 	./$(TESTBIN_PII)
 	@echo ""
 
-test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII)
+test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII) $(TESTBIN_SEAZERO)
 	@echo ""
 	@echo "  Running tests..."
 	@echo "  ────────────────"
@@ -313,6 +322,7 @@ test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN
 	./$(TESTBIN_SKILL)
 	./$(TESTBIN_RECALL)
 	./$(TESTBIN_PII)
+	./$(TESTBIN_SEAZERO)
 	@echo ""
 
 $(TESTBIN_ARENA): $(TEST_ARENA_OBJ) src/core/sea_arena.o src/core/sea_log.o
@@ -354,11 +364,14 @@ $(TESTBIN_PII): $(TEST_PII_OBJ) src/pii/sea_pii.o src/core/sea_arena.o src/core/
 $(TESTBIN_BENCH): $(TEST_BENCH_OBJ) src/core/sea_arena.o src/core/sea_log.o src/senses/sea_json.o src/shield/sea_shield.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
+$(TESTBIN_SEAZERO): $(TEST_SEAZERO_OBJ) src/core/sea_arena.o src/core/sea_log.o src/core/sea_db.o src/senses/sea_json.o src/senses/sea_http.o src/shield/sea_shield.o src/pii/sea_pii.o seazero/bridge/sea_zero.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
+
 # ── Clean ─────────────────────────────────────────────────────
 
 clean:
-	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII) $(TESTBIN_BENCH)
-	find src tests -name '*.o' -delete 2>/dev/null || true
+	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII) $(TESTBIN_BENCH) $(TESTBIN_SEAZERO)
+	find src tests seazero -name '*.o' -delete 2>/dev/null || true
 	@echo "  Cleaned."
 
 # ── Install ───────────────────────────────────────────────────
@@ -366,3 +379,26 @@ clean:
 install: release
 	install -m 755 $(DISTDIR)/$(BIN) /usr/local/bin/$(BIN)
 	@echo "  Installed to /usr/local/bin/$(BIN)"
+
+# ── SeaZero (Agent Zero integration — opt-in) ────────────────
+
+seazero-setup:
+	@bash seazero/scripts/setup.sh
+
+seazero-up:
+	@echo "  Starting Agent Zero..."
+	cd seazero && docker compose up -d
+	@echo "  \033[32m✓\033[0m Agent Zero: http://localhost:8080"
+
+seazero-down:
+	@echo "  Stopping Agent Zero..."
+	cd seazero && docker compose down
+
+seazero-health:
+	@bash seazero/scripts/spawn-agent.sh health
+
+seazero-spawn:
+	@bash seazero/scripts/spawn-agent.sh spawn
+
+seazero-list:
+	@bash seazero/scripts/spawn-agent.sh list
