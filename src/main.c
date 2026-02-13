@@ -138,6 +138,7 @@ static SeaLlmProvider parse_provider(const char* name) {
     if (strcmp(name, "gemini") == 0)     return SEA_LLM_GEMINI;
     if (strcmp(name, "openrouter") == 0) return SEA_LLM_OPENROUTER;
     if (strcmp(name, "local") == 0)      return SEA_LLM_LOCAL;
+    if (strcmp(name, "zai") == 0)        return SEA_LLM_ZAI;
     return SEA_LLM_OPENAI;
 }
 
@@ -1013,8 +1014,8 @@ int main(int argc, char** argv) {
                    s_config.telegram_chat_id ? "\033[32m✓\033[0m" : "\033[33m○\033[0m");
             printf("\n  \033[1mFallbacks:\033[0m     %u configured\n", s_config.llm_fallback_count);
             printf("\n  \033[1mEnvironment:\033[0m\n");
-            const char* env_keys[] = {"OPENAI_API_KEY","ANTHROPIC_API_KEY","GEMINI_API_KEY","OPENROUTER_API_KEY","TELEGRAM_BOT_TOKEN","EXA_API_KEY"};
-            for (int e = 0; e < 6; e++) {
+            const char* env_keys[] = {"OPENAI_API_KEY","ANTHROPIC_API_KEY","GEMINI_API_KEY","OPENROUTER_API_KEY","ZAI_API_KEY","TELEGRAM_BOT_TOKEN","EXA_API_KEY"};
+            for (int e = 0; e < 7; e++) {
                 const char* v = getenv(env_keys[e]);
                 printf("    %-24s %s\n", env_keys[e], (v && *v) ? "\033[32m✓\033[0m" : "\033[90m-\033[0m");
             }
@@ -1155,7 +1156,7 @@ int main(int argc, char** argv) {
             printf("\n  \033[1mStep 2/3 — LLM Provider\033[0m\n\n");
             char ob_provider[64] = {0}, ob_key[256] = {0}, ob_model[128] = {0};
 
-            printf("  Provider (openai/anthropic/gemini/openrouter/local): ");
+            printf("  Provider (openai/anthropic/gemini/openrouter/zai/local): ");
             fflush(stdout);
             if (fgets(ob_provider, sizeof(ob_provider), stdin)) {
                 ob_provider[strcspn(ob_provider, "\n")] = '\0';
@@ -1337,6 +1338,10 @@ int main(int argc, char** argv) {
             break;
         case SEA_LLM_LOCAL:
             break;
+        case SEA_LLM_ZAI:
+            if (NEEDS_KEY(s_agent_cfg.api_key) && (env_val = getenv("ZAI_API_KEY")) && *env_val)
+                s_agent_cfg.api_key = env_val;
+            break;
     }
 
     /* Wire fallback providers */
@@ -1355,6 +1360,7 @@ int main(int argc, char** argv) {
                 case SEA_LLM_GEMINI:     fb->api_key = getenv("GEMINI_API_KEY"); break;
                 case SEA_LLM_OPENROUTER: fb->api_key = getenv("OPENROUTER_API_KEY"); break;
                 case SEA_LLM_LOCAL:      break;
+                case SEA_LLM_ZAI:        fb->api_key = getenv("ZAI_API_KEY"); break;
             }
         }
         s_agent_cfg.fallback_count++;

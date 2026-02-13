@@ -54,6 +54,7 @@ void sea_agent_defaults(SeaAgentConfig* cfg) {
             case SEA_LLM_GEMINI:     cfg->api_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"; break;
             case SEA_LLM_OPENROUTER: cfg->api_url = "https://openrouter.ai/api/v1/chat/completions"; break;
             case SEA_LLM_LOCAL:      cfg->api_url = "http://localhost:11434/v1/chat/completions"; break;
+            case SEA_LLM_ZAI:        cfg->api_url = "https://api.z.ai/api/coding/paas/v4/chat/completions"; break;
         }
     }
     if (!cfg->model) {
@@ -63,6 +64,7 @@ void sea_agent_defaults(SeaAgentConfig* cfg) {
             case SEA_LLM_GEMINI:     cfg->model = "gemini-2.0-flash"; break;
             case SEA_LLM_OPENROUTER: cfg->model = "moonshotai/kimi-k2.5"; break;
             case SEA_LLM_LOCAL:      cfg->model = "llama3"; break;
+            case SEA_LLM_ZAI:        cfg->model = "glm-5"; break;
         }
     }
     if (cfg->max_tokens == 0) cfg->max_tokens = 4096;
@@ -71,6 +73,10 @@ void sea_agent_defaults(SeaAgentConfig* cfg) {
 
     /* Apply think level overrides */
     sea_agent_set_think_level(cfg, cfg->think_level);
+
+    /* Z.AI GLM-5 uses reasoning tokens before content — ensure enough headroom */
+    if (cfg->provider == SEA_LLM_ZAI && cfg->max_tokens < 4096)
+        cfg->max_tokens = 4096;
 }
 
 void sea_agent_init(SeaAgentConfig* cfg) {
@@ -82,8 +88,9 @@ void sea_agent_init(SeaAgentConfig* cfg) {
         case SEA_LLM_GEMINI:     prov_name = "Gemini"; break;
         case SEA_LLM_OPENROUTER: prov_name = "OpenRouter"; break;
         case SEA_LLM_LOCAL:      prov_name = "Local"; break;
+        case SEA_LLM_ZAI:        prov_name = "Z.AI"; break;
     }
-    SEA_LOG_INFO("AGENT", "Provider: %s, Model: %s", prov_name, cfg->model);
+    SEA_LOG_INFO("AGENT", "Provider: %s, Model: %s (max_tokens=%u)", prov_name, cfg->model, cfg->max_tokens);
 }
 
 /* ── Think Level ──────────────────────────────────────── */
@@ -304,6 +311,10 @@ static ParsedResponse parse_llm_response(const char* body, u32 body_len,
     }
 
     SeaSlice content_slice = sea_json_get_string(message, "content");
+    /* Z.AI GLM-5 may put response in reasoning_content when content is empty */
+    if (content_slice.len == 0) {
+        content_slice = sea_json_get_string(message, "reasoning_content");
+    }
     if (content_slice.len == 0) {
         pr.text = "";
         return pr;

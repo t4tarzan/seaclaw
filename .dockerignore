@@ -1,0 +1,47 @@
+# Secrets — never bake into Docker image
+.env
+config.json
+*.db
+*.db-shm
+*.db-wal
+*.key
+*.pem
+
+# Build artifacts
+/build/
+/dist/
+*.o
+*.a
+*.so
+*.dylib
+sea_claw
+test_arena
+test_json
+test_shield
+test_db
+test_config
+test_bus
+test_session
+test_memory
+test_cron
+test_skill
+test_recall
+test_pii
+test_bench
+/core
+/core.*
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Working / non-public
+/working/
+/openclaw_analysis/
+/Kimi_Agent_OpenClaw C Rebuild Project/
+claude.md
