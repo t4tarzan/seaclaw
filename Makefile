@@ -242,7 +242,7 @@ TESTBIN_BENCH   := test_bench
 
 # ── Targets ───────────────────────────────────────────────────
 
-.PHONY: all clean test install release debug
+.PHONY: all clean test install release debug seazero-setup seazero-up seazero-down seazero-health seazero-spawn seazero-list
 
 all: $(BIN)
 	@echo ""
@@ -366,3 +366,26 @@ clean:
 install: release
 	install -m 755 $(DISTDIR)/$(BIN) /usr/local/bin/$(BIN)
 	@echo "  Installed to /usr/local/bin/$(BIN)"
+
+# ── SeaZero (Agent Zero integration — opt-in) ────────────────
+
+seazero-setup:
+	@bash seazero/scripts/setup.sh
+
+seazero-up:
+	@echo "  Starting Agent Zero..."
+	cd seazero && docker compose up -d
+	@echo "  \033[32m✓\033[0m Agent Zero: http://localhost:8080"
+
+seazero-down:
+	@echo "  Stopping Agent Zero..."
+	cd seazero && docker compose down
+
+seazero-health:
+	@bash seazero/scripts/spawn-agent.sh health
+
+seazero-spawn:
+	@bash seazero/scripts/spawn-agent.sh spawn
+
+seazero-list:
+	@bash seazero/scripts/spawn-agent.sh list
