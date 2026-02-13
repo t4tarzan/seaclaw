@@ -769,3 +769,54 @@ SeaError sea_db_sz_audit(SeaDb* db, const char* event_type,
 
     return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
 }
+
+i32 sea_db_sz_audit_list(SeaDb* db, SeaDbAuditEvent* events, u32 max,
+                          SeaArena* arena) {
+    if (!db || !events || max == 0 || !arena) return 0;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "SELECT id, event_type, source, target, detail, severity, created_at "
+        "FROM seazero_audit ORDER BY id DESC LIMIT ?";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return 0;
+
+    sqlite3_bind_int(stmt, 1, (int)max);
+
+    i32 count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && (u32)count < max) {
+        events[count].id = sqlite3_column_int(stmt, 0);
+
+        const char* col_vals[6];
+        col_vals[0] = (const char*)sqlite3_column_text(stmt, 1);
+        col_vals[1] = (const char*)sqlite3_column_text(stmt, 2);
+        col_vals[2] = (const char*)sqlite3_column_text(stmt, 3);
+        col_vals[3] = (const char*)sqlite3_column_text(stmt, 4);
+        col_vals[4] = (const char*)sqlite3_column_text(stmt, 5);
+        col_vals[5] = (const char*)sqlite3_column_text(stmt, 6);
+
+        const char** dest_ptrs[6];
+        dest_ptrs[0] = &events[count].event_type;
+        dest_ptrs[1] = &events[count].source;
+        dest_ptrs[2] = &events[count].target;
+        dest_ptrs[3] = &events[count].detail;
+        dest_ptrs[4] = &events[count].severity;
+        dest_ptrs[5] = &events[count].created_at;
+
+        for (int ci = 0; ci < 6; ci++) {
+            if (col_vals[ci]) {
+                u64 slen = strlen(col_vals[ci]);
+                char* s = (char*)sea_arena_push(arena, slen + 1);
+                if (s) { memcpy(s, col_vals[ci], slen + 1); *dest_ptrs[ci] = s; }
+                else { *dest_ptrs[ci] = NULL; }
+            } else {
+                *dest_ptrs[ci] = NULL;
+            }
+        }
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    return count;
+}

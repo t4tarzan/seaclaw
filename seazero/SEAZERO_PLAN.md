@@ -221,13 +221,14 @@ CREATE INDEX IF NOT EXISTS idx_sz_agents_status ON seazero_agents(status);
 - [x] **5.5** Auto-cleanup: removes workspaces older than 7 days (configurable)
 - [x] **5.6** Wired into main.c: `sea_workspace_init()` on SeaZero startup
 
-### Phase 6: TUI Enhancements
-- [ ] **6.1** `/agents` command — list Agent Zero instances + status
-- [ ] **6.2** `/delegate <task>` command — explicitly delegate to Agent Zero
-- [ ] **6.3** `/tasks` command — show delegated task history
-- [ ] **6.4** `/usage` command — LLM token usage breakdown
-- [ ] **6.5** `/audit` command — recent security events
-- [ ] **6.6** Status indicator: show when Agent Zero is working
+### Phase 6: TUI Enhancements ✅ COMPLETE
+- [x] **6.1** `/agents` — list Agent Zero instances with status icons (●/●/●)
+- [x] **6.2** `/delegate <task>` — delegate task to Agent Zero via bridge
+- [x] **6.3** `/sztasks` — show delegated task history with status icons
+- [x] **6.4** `/usage` — LLM token usage breakdown (SeaClaw vs Agent Zero)
+- [x] **6.5** `/audit` — recent security events with severity icons
+- [x] **6.6** `/help` updated with SeaZero command section
+- [x] **6.7** `sea_db_sz_audit_list()` — query function for audit events
 
 ### Phase 7: Electron UI (Optional, Future)
 - [ ] **7.1** Evaluate if Telegram + TUI cover 90%+ of use cases

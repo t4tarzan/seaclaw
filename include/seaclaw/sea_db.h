@@ -163,4 +163,18 @@ SeaError sea_db_sz_audit(SeaDb* db, const char* event_type,
                           const char* source, const char* target,
                           const char* detail, const char* severity);
 
+typedef struct {
+    i32         id;
+    const char* event_type;
+    const char* source;
+    const char* target;
+    const char* detail;
+    const char* severity;
+    const char* created_at;
+} SeaDbAuditEvent;
+
+/* List recent audit events. Returns count. */
+i32 sea_db_sz_audit_list(SeaDb* db, SeaDbAuditEvent* events, u32 max,
+                          SeaArena* arena);
+
 #endif /* SEA_DB_H */
