@@ -153,7 +153,7 @@ SeaZeroResult sea_zero_delegate(
 
     /* Parse JSON response */
     SeaJsonValue root;
-    if (sea_json_parse((const char*)resp.body.data, resp.body.len, &root) != SEA_OK) {
+    if (sea_json_parse(resp.body, arena, &root) != SEA_OK) {
         result.error = "Invalid JSON from Agent Zero";
         return result;
     }
@@ -161,11 +161,10 @@ SeaZeroResult sea_zero_delegate(
     /* Extract result */
     SeaSlice result_slice = sea_json_get_string(&root, "result");
     SeaSlice error_slice  = sea_json_get_string(&root, "error");
-    SeaSlice steps_slice  = sea_json_get_string(&root, "steps_taken");
 
     if (error_slice.len > 0) {
         /* Agent Zero reported an error */
-        char* err_str = (char*)sea_arena_alloc(arena, error_slice.len + 1);
+        char* err_str = (char*)sea_arena_push(arena, error_slice.len + 1);
         if (err_str) {
             memcpy(err_str, error_slice.data, error_slice.len);
             err_str[error_slice.len] = '\0';
@@ -181,19 +180,15 @@ SeaZeroResult sea_zero_delegate(
         return result;
     }
 
-    /* Validate output through Grammar Shield */
-    SeaShieldResult shield = sea_shield_check(
-        (const char*)result_slice.data, result_slice.len);
-
-    if (shield.blocked) {
-        SEA_LOG_WARN("SEAZERO", "Grammar Shield blocked Agent Zero output: %s",
-                     shield.reason ? shield.reason : "unknown");
+    /* Validate output through Grammar Shield (output injection detection) */
+    if (sea_shield_detect_output_injection(result_slice)) {
+        SEA_LOG_WARN("SEAZERO", "Grammar Shield blocked Agent Zero output (injection detected)");
         result.error = "Agent Zero output blocked by Grammar Shield";
         return result;
     }
 
     /* Copy result to arena */
-    char* res_str = (char*)sea_arena_alloc(arena, result_slice.len + 1);
+    char* res_str = (char*)sea_arena_push(arena, result_slice.len + 1);
     if (!res_str) {
         result.error = "Arena full";
         return result;
@@ -239,10 +234,10 @@ SeaZeroHealth sea_zero_health(const SeaZeroConfig* cfg, SeaArena* arena) {
 
     /* Parse health response */
     SeaJsonValue root;
-    if (sea_json_parse((const char*)resp.body.data, resp.body.len, &root) == SEA_OK) {
+    if (sea_json_parse(resp.body, arena, &root) == SEA_OK) {
         SeaSlice status_slice = sea_json_get_string(&root, "status");
         if (status_slice.len > 0) {
-            char* s = (char*)sea_arena_alloc(arena, status_slice.len + 1);
+            char* s = (char*)sea_arena_push(arena, status_slice.len + 1);
             if (s) {
                 memcpy(s, status_slice.data, status_slice.len);
                 s[status_slice.len] = '\0';
@@ -252,7 +247,7 @@ SeaZeroHealth sea_zero_health(const SeaZeroConfig* cfg, SeaArena* arena) {
 
         SeaSlice id_slice = sea_json_get_string(&root, "agent_id");
         if (id_slice.len > 0) {
-            char* id = (char*)sea_arena_alloc(arena, id_slice.len + 1);
+            char* id = (char*)sea_arena_push(arena, id_slice.len + 1);
             if (id) {
                 memcpy(id, id_slice.data, id_slice.len);
                 id[id_slice.len] = '\0';

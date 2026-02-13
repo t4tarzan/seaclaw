@@ -89,4 +89,78 @@ SeaError sea_db_chat_clear(SeaDb* db, i64 chat_id);
 
 SeaError sea_db_exec(SeaDb* db, const char* sql);
 
+/* ── SeaZero v3: Agent Management ────────────────────────── */
+
+typedef struct {
+    const char* agent_id;
+    const char* status;     /* stopped, starting, ready, busy, error */
+    const char* container;
+    i32         port;
+    const char* provider;
+    const char* model;
+    const char* created_at;
+    const char* last_seen;
+} SeaDbAgent;
+
+SeaError sea_db_sz_agent_register(SeaDb* db, const char* agent_id,
+                                   const char* container, i32 port,
+                                   const char* provider, const char* model);
+
+SeaError sea_db_sz_agent_update_status(SeaDb* db, const char* agent_id,
+                                        const char* status);
+
+SeaError sea_db_sz_agent_heartbeat(SeaDb* db, const char* agent_id);
+
+i32 sea_db_sz_agent_list(SeaDb* db, SeaDbAgent* out, i32 max_count,
+                          SeaArena* arena);
+
+/* ── SeaZero v3: Task Tracking ───────────────────────────── */
+
+typedef struct {
+    const char* task_id;
+    const char* agent_id;
+    i64         chat_id;
+    const char* status;     /* pending, running, completed, failed, cancelled */
+    const char* task_text;
+    const char* result;
+    const char* error;
+    i32         steps_taken;
+    f64         elapsed_sec;
+    const char* created_at;
+    const char* completed_at;
+} SeaDbSzTask;
+
+SeaError sea_db_sz_task_create(SeaDb* db, const char* task_id,
+                                const char* agent_id, i64 chat_id,
+                                const char* task_text, const char* context);
+
+SeaError sea_db_sz_task_start(SeaDb* db, const char* task_id);
+
+SeaError sea_db_sz_task_complete(SeaDb* db, const char* task_id,
+                                  const char* result, const char* files,
+                                  i32 steps_taken, f64 elapsed_sec);
+
+SeaError sea_db_sz_task_fail(SeaDb* db, const char* task_id,
+                              const char* error, f64 elapsed_sec);
+
+i32 sea_db_sz_task_list(SeaDb* db, const char* status_filter,
+                         SeaDbSzTask* out, i32 max_count, SeaArena* arena);
+
+/* ── SeaZero v3: LLM Usage Tracking ─────────────────────── */
+
+SeaError sea_db_sz_llm_log(SeaDb* db, const char* caller,
+                            const char* provider, const char* model,
+                            i32 tokens_in, i32 tokens_out,
+                            f64 cost_usd, i32 latency_ms,
+                            const char* status, const char* task_id);
+
+/* Returns total tokens used by a caller. */
+i64 sea_db_sz_llm_total_tokens(SeaDb* db, const char* caller);
+
+/* ── SeaZero v3: Security Audit ──────────────────────────── */
+
+SeaError sea_db_sz_audit(SeaDb* db, const char* event_type,
+                          const char* source, const char* target,
+                          const char* detail, const char* severity);
+
 #endif /* SEA_DB_H */
