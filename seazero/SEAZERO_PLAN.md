@@ -169,20 +169,20 @@ CREATE INDEX IF NOT EXISTS idx_sz_agents_status ON seazero_agents(status);
 - [x] Merge `dev` → `main` (Z.AI, Docker work)
 - [x] Push `feature/seazero` to GitHub
 
-### Phase 1: Database v3 + Tool Registration
-- [ ] **1.1** Add v3 schema to `SCHEMA_SQL` in `sea_db.c`
-- [ ] **1.2** Add `sea_db_seazero_*` functions to `sea_db.h` / `sea_db.c`:
+### Phase 1: Database v3 + Tool Registration ✅ COMPLETE
+- [x] **1.1** Add v3 schema to `SCHEMA_SQL` in `sea_db.c`
+- [x] **1.2** Add `sea_db_sz_*` functions to `sea_db.h` / `sea_db.c`:
   - `sea_db_sz_agent_register()` — register/update agent
   - `sea_db_sz_task_create()` — create delegated task
-  - `sea_db_sz_task_update()` — update task status/result
-  - `sea_db_sz_task_get()` — get task by ID
+  - `sea_db_sz_task_start/complete/fail()` — update task status/result
+  - `sea_db_sz_task_list()` — list tasks by status
   - `sea_db_sz_llm_log()` — log LLM usage
   - `sea_db_sz_audit()` — log security event
-- [ ] **1.3** Add `tool_agent_zero` to `s_registry[]` in `sea_tools.c` as tool #58
-- [ ] **1.4** Add `extern SeaError tool_agent_zero(...)` forward declaration
-- [ ] **1.5** Wire `sea_zero_init()` call in `main.c` (if `seazero_enabled` in config)
-- [ ] **1.6** Compile and run existing tests (ensure no regressions)
-- [ ] **1.7** Write `tests/test_seazero.c` — unit tests for bridge + DB functions
+- [x] **1.3** Add `tool_agent_zero` to `s_registry[]` in `sea_tools.c` as tool #58
+- [x] **1.4** Add `extern SeaError tool_agent_zero(...)` forward declaration
+- [x] **1.5** Bridge API fixes (sea_json_parse, sea_shield, sea_arena signatures)
+- [x] **1.6** Compile (0 warnings) + all 12 existing test suites pass (0 regressions)
+- [x] **1.7** `tests/test_seazero.c` — 18 assertions, all pass
 
 ### Phase 2: LLM Proxy
 - [ ] **2.1** Add lightweight HTTP listener to SeaClaw (port 7432)
