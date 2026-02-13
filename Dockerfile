@@ -1,11 +1,15 @@
-# Sea-Claw Docker Image
-# Multi-stage: build + test in builder, slim runtime image
+# Sea-Claw Docker Image (Production)
+# Multi-stage: build in builder, slim runtime image
 #
-# Build:  docker build -t seaclaw .
-# Run:    docker run -it --rm seaclaw
-# Config: docker run -it --rm -v ~/.config/seaclaw:/root/.config/seaclaw seaclaw --config /root/.config/seaclaw/config.json
+# First run auto-triggers onboarding wizard (asks for LLM + Telegram config).
+# Config persists in the /root/.config/seaclaw volume.
+#
+# Build:      docker build -t seaclaw .
+# Run:        docker run -it --rm -v seaclaw-data:/root/.config/seaclaw seaclaw
+# Test:       docker run --rm seaclaw test
+# Re-onboard: docker run -it --rm -v seaclaw-data:/root/.config/seaclaw seaclaw --onboard
 
-# ── Stage 1: Build & Test ────────────────────────────────────
+# ── Stage 1: Build ───────────────────────────────────────────
 FROM debian:bookworm-slim AS builder
 
 RUN apt-get update -qq && \
@@ -33,12 +37,12 @@ RUN apt-get update -qq && \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /build/dist/sea_claw /usr/local/bin/sea_claw
+COPY docker-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-# Default config directory
+# Config + DB persist here (mount a named volume)
 RUN mkdir -p /root/.config/seaclaw
-
-# Default data directory
 VOLUME ["/root/.config/seaclaw"]
 
-ENTRYPOINT ["sea_claw"]
-CMD ["--help"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["run"]
