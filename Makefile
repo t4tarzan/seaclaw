@@ -276,6 +276,27 @@ debug: clean all
 
 # ── Tests ─────────────────────────────────────────────────────
 
+# Docker-safe tests (no ASan/UBSan — sanitizers need ptrace inside containers)
+test-docker: CFLAGS := $(CFLAGS_BASE) $(ARCH_FLAGS) -O0 -g -DDEBUG
+test-docker: LDFLAGS_DEBUG :=
+test-docker: clean $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII)
+	@echo ""
+	@echo "  Running tests (no sanitizers)..."
+	@echo "  ────────────────"
+	./$(TESTBIN_ARENA)
+	./$(TESTBIN_JSON)
+	./$(TESTBIN_SHIELD)
+	./$(TESTBIN_DB)
+	./$(TESTBIN_CONFIG)
+	./$(TESTBIN_BUS)
+	./$(TESTBIN_SESSION)
+	./$(TESTBIN_MEMORY)
+	./$(TESTBIN_CRON)
+	./$(TESTBIN_SKILL)
+	./$(TESTBIN_RECALL)
+	./$(TESTBIN_PII)
+	@echo ""
+
 test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII)
 	@echo ""
 	@echo "  Running tests..."

@@ -1,0 +1,36 @@
+# Sea-Claw Development Dockerfile
+# Builds from local source on the 'dev' branch for feature development & testing.
+#
+# Build:  docker build -f Dockerfile.dev -t seaclaw-dev .
+# Run:    docker run -it --rm seaclaw-dev
+# Test:   docker run --rm --privileged seaclaw-dev test
+# Shell:  docker run -it --rm seaclaw-dev shell
+
+FROM debian:bookworm-slim
+
+RUN apt-get update -qq && \
+    apt-get install -y -qq --no-install-recommends \
+        build-essential \
+        libcurl4-openssl-dev \
+        libsqlite3-dev \
+        ca-certificates \
+        git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /seaclaw
+COPY . .
+
+# Build release binary
+RUN make clean && make release 2>&1
+
+# Symlink for convenience
+RUN ln -sf /seaclaw/dist/sea_claw /usr/local/bin/sea_claw
+
+# Default config directory
+RUN mkdir -p /root/.config/seaclaw
+
+COPY docker-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["--help"]
