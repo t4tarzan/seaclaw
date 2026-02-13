@@ -73,6 +73,10 @@ void sea_agent_defaults(SeaAgentConfig* cfg) {
 
     /* Apply think level overrides */
     sea_agent_set_think_level(cfg, cfg->think_level);
+
+    /* Z.AI GLM-5 uses reasoning tokens before content — ensure enough headroom */
+    if (cfg->provider == SEA_LLM_ZAI && cfg->max_tokens < 4096)
+        cfg->max_tokens = 4096;
 }
 
 void sea_agent_init(SeaAgentConfig* cfg) {
@@ -86,7 +90,7 @@ void sea_agent_init(SeaAgentConfig* cfg) {
         case SEA_LLM_LOCAL:      prov_name = "Local"; break;
         case SEA_LLM_ZAI:        prov_name = "Z.AI"; break;
     }
-    SEA_LOG_INFO("AGENT", "Provider: %s, Model: %s", prov_name, cfg->model);
+    SEA_LOG_INFO("AGENT", "Provider: %s, Model: %s (max_tokens=%u)", prov_name, cfg->model, cfg->max_tokens);
 }
 
 /* ── Think Level ──────────────────────────────────────── */
@@ -307,6 +311,10 @@ static ParsedResponse parse_llm_response(const char* body, u32 body_len,
     }
 
     SeaSlice content_slice = sea_json_get_string(message, "content");
+    /* Z.AI GLM-5 may put response in reasoning_content when content is empty */
+    if (content_slice.len == 0) {
+        content_slice = sea_json_get_string(message, "reasoning_content");
+    }
     if (content_slice.len == 0) {
         pr.text = "";
         return pr;
