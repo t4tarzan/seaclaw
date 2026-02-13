@@ -180,7 +180,8 @@ HANDS_SRC := \
 
 SEAZERO_SRC := \
 	seazero/bridge/sea_zero.c \
-	seazero/bridge/sea_proxy.c
+	seazero/bridge/sea_proxy.c \
+	seazero/bridge/sea_workspace.c
 
 MAIN_SRC := src/main.c
 

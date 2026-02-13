@@ -29,6 +29,7 @@
 #include "seaclaw/sea_mesh.h"
 #include "sea_zero.h"
 #include "sea_proxy.h"
+#include "sea_workspace.h"
 #include <pthread.h>
 
 #include <stdio.h>
@@ -1435,6 +1436,11 @@ int main(int argc, char** argv) {
                     SEA_LOG_INFO("SEAZERO", "LLM proxy active on 127.0.0.1:7432");
                 }
             }
+
+            /* Initialize shared workspace */
+            SeaWorkspaceConfig wscfg = {0};
+            wscfg.retention_days = 7;
+            sea_workspace_init(&wscfg);
 
             SEA_LOG_INFO("SEAZERO", "Agent Zero integration enabled (tool #58)");
         }

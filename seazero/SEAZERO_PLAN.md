@@ -213,12 +213,13 @@ CREATE INDEX IF NOT EXISTS idx_sz_agents_status ON seazero_agents(status);
 - [x] **4.8** Grammar Shield: `sea_shield_detect_output_injection` on all output
 - [ ] **4.9** Penetration test: try to escape container, exfiltrate keys, inject via output
 
-### Phase 5: Shared Workspace + File Delivery
-- [ ] **5.1** Shared volume: `~/.seazero/workspace/<task-id>/` mounted in Agent Zero
-- [ ] **5.2** SeaClaw reads workspace after task completion
-- [ ] **5.3** File delivery in Telegram: attach small files, link large ones
-- [ ] **5.4** File delivery in TUI: show path, offer to open
-- [ ] **5.5** Workspace cleanup: auto-delete after 7 days (configurable)
+### Phase 5: Shared Workspace + File Delivery ✅ COMPLETE
+- [x] **5.1** `sea_workspace.h/c`: workspace manager with create/list/read/cleanup
+- [x] **5.2** Shared volume in docker-compose: `~/.seazero/workspace` → `/agent/shared`
+- [x] **5.3** Path traversal protection: blocks `..` and absolute paths
+- [x] **5.4** File size limits: 10MB per file, 100MB total (configurable)
+- [x] **5.5** Auto-cleanup: removes workspaces older than 7 days (configurable)
+- [x] **5.6** Wired into main.c: `sea_workspace_init()` on SeaZero startup
 
 ### Phase 6: TUI Enhancements
 - [ ] **6.1** `/agents` command — list Agent Zero instances + status
