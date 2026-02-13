@@ -1,17 +1,38 @@
 #!/usr/bin/env bash
 # Sea-Claw Interactive Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh | bash
+# One-command install:
+#   curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh | bash
 #
 # Features:
 #   - Interactive setup wizard with arrow-key menus
 #   - LLM provider selection (OpenRouter, OpenAI, Gemini, Anthropic, Local)
 #   - API key configuration
 #   - Optional Telegram bot setup
+#   - Optional Agent Zero (SeaZero) integration
 #   - Optional fallback provider chain
 #   - Builds from source, runs tests, installs binary
 #   - Launches TUI on completion
 
 set -euo pipefail
+
+# ── TTY Bootstrap ───────────────────────────────────────────
+# When piped via `curl ... | bash`, stdin is the pipe — not the terminal.
+# We detect this and re-download the script to a temp file, then re-exec
+# with /dev/tty as stdin so interactive menus and prompts work.
+if [[ ! -t 0 ]]; then
+    TMPSCRIPT=$(mktemp /tmp/seaclaw-install.XXXXXX.sh)
+    SCRIPT_URL="${SEACLAW_INSTALL_URL:-https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh}"
+    if command -v curl &>/dev/null; then
+        curl -fsSL "$SCRIPT_URL" > "$TMPSCRIPT"
+    elif command -v wget &>/dev/null; then
+        wget -qO- "$SCRIPT_URL" > "$TMPSCRIPT"
+    else
+        echo "Error: curl or wget required for piped install" >&2
+        exit 1
+    fi
+    chmod +x "$TMPSCRIPT"
+    exec bash "$TMPSCRIPT" </dev/tty
+fi
 
 # ── Colors & Formatting ──────────────────────────────────────
 RED='\033[0;31m'
@@ -80,10 +101,10 @@ menu_select() {
     done
 
     while true; do
-        # Read single keypress
-        IFS= read -rsn1 key
+        # Read single keypress (from /dev/tty for pipe compatibility)
+        IFS= read -rsn1 key </dev/tty
         if [[ "$key" == $'\x1b' ]]; then
-            read -rsn2 key
+            read -rsn2 key </dev/tty
             case "$key" in
                 '[A') # Up arrow
                     ((selected > 0)) && ((selected--))
@@ -129,7 +150,7 @@ read_secret() {
     else
         echo -en "  ${BOLD}$prompt${RESET}: "
     fi
-    read -rs _out
+    read -rs _out </dev/tty
     echo ""
 
     if [[ -z "$_out" && -n "$default" ]]; then
@@ -148,7 +169,7 @@ read_input() {
     else
         echo -en "  ${BOLD}$prompt${RESET}: "
     fi
-    read -r _out
+    read -r _out </dev/tty
 
     if [[ -z "$_out" && -n "$default" ]]; then
         _out="$default"
@@ -166,7 +187,7 @@ confirm() {
     else
         echo -en "  ${BOLD}$prompt${RESET} ${DIM}[y/N]:${RESET} "
     fi
-    read -r yn
+    read -r yn </dev/tty
     yn="${yn:-$default}"
     [[ "${yn,,}" == "y" || "${yn,,}" == "yes" ]]
 }
