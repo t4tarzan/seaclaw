@@ -7,9 +7,8 @@
  */
 
 #include "seaclaw/sea_recall.h"
-#include "seaclaw/sea_db.h"
 #include "seaclaw/sea_log.h"
-
+#include "seaclaw/sea_db.h"
 #include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -99,27 +98,7 @@ static void extract_keywords(const char* text, char* buf, u32 buf_size) {
 
 /* ── Keyword Scoring ─────────────────────────────────────── */
 
-/* Count how many query keywords appear in the fact's keywords.
- * Returns overlap count. */
-static i32 keyword_overlap(const char* query_kw, const char* fact_kw) {
-    if (!query_kw || !fact_kw || !query_kw[0] || !fact_kw[0]) return 0;
-
-    i32 overlap = 0;
-    char qcopy[1024];
-    strncpy(qcopy, query_kw, sizeof(qcopy) - 1);
-    qcopy[sizeof(qcopy) - 1] = '\0';
-
-    char* saveptr = NULL;
-    char* token = strtok_r(qcopy, " ", &saveptr);
-    while (token) {
-        /* Check if this query keyword appears in fact keywords */
-        if (strstr(fact_kw, token)) {
-            overlap++;
-        }
-        token = strtok_r(NULL, " ", &saveptr);
-    }
-    return overlap;
-}
+/* keyword_overlap function removed - now using TF-IDF scoring */
 
 /* Recency decay: facts accessed recently score higher.
  * Returns 0.1 to 1.0 based on days since last access. */
@@ -241,6 +220,81 @@ SeaError sea_recall_store(SeaRecall* rc, const char* category,
     return SEA_OK;
 }
 
+/* ── TF-IDF Scoring ───────────────────────────────────────── */
+
+static f64 calculate_tf(const char* term, const char* keywords) {
+    /* Term frequency: count occurrences of term in keywords */
+    if (!term || !keywords) return 0.0;
+    
+    i32 count = 0;
+    i32 total = 0;
+    const char* p = keywords;
+    
+    while (*p) {
+        /* Skip whitespace */
+        while (*p && (*p == ' ' || *p == '\t')) p++;
+        if (!*p) break;
+        
+        /* Extract word */
+        const char* word_start = p;
+        while (*p && *p != ' ' && *p != '\t') p++;
+        size_t word_len = (size_t)(p - word_start);
+        
+        total++;
+        
+        /* Compare with term */
+        if (word_len == strlen(term) && strncmp(word_start, term, word_len) == 0) {
+            count++;
+        }
+    }
+    
+    return total > 0 ? (f64)count / (f64)total : 0.0;
+}
+
+static f64 calculate_idf(const char* term, SeaRecallFact* facts, i32 fact_count) {
+    /* Inverse document frequency: log(N / df) where df = docs containing term */
+    if (!term || !facts || fact_count <= 0) return 0.0;
+    
+    i32 docs_with_term = 0;
+    for (i32 i = 0; i < fact_count; i++) {
+        if (strstr(facts[i].keywords, term)) {
+            docs_with_term++;
+        }
+    }
+    
+    if (docs_with_term == 0) return 0.0;
+    
+    /* IDF = log(N / df) */
+    return log((f64)fact_count / (f64)docs_with_term);
+}
+
+static f64 calculate_tfidf_score(const char* query_kw, SeaRecallFact* fact, 
+                                  SeaRecallFact* all_facts, i32 fact_count) {
+    /* Calculate TF-IDF score for this fact against the query */
+    f64 score = 0.0;
+    
+    /* Tokenize query keywords */
+    char query_copy[1024];
+    strncpy(query_copy, query_kw, sizeof(query_copy) - 1);
+    query_copy[sizeof(query_copy) - 1] = '\0';
+    
+    char* token = strtok(query_copy, " \t");
+    while (token) {
+        /* Calculate TF for this term in the fact */
+        f64 tf = calculate_tf(token, fact->keywords);
+        
+        /* Calculate IDF for this term across all facts */
+        f64 idf = calculate_idf(token, all_facts, fact_count);
+        
+        /* Add to score */
+        score += tf * idf;
+        
+        token = strtok(NULL, " \t");
+    }
+    
+    return score;
+}
+
 /* ── Query ────────────────────────────────────────────────── */
 
 i32 sea_recall_query(SeaRecall* rc, const char* query,
@@ -286,31 +340,39 @@ i32 sea_recall_query(SeaRecall* rc, const char* query,
         f->importance = sqlite3_column_int(stmt, 4);
         f->access_count = sqlite3_column_int(stmt, 7);
 
-        /* Score: keyword_overlap * importance_weight * recency */
-        i32 overlap = keyword_overlap(query_kw, f->keywords);
-        f64 imp_weight = (f64)f->importance / 10.0;
-        f64 recency = recency_score(f->accessed_at);
-
-        /* Base score from keyword overlap */
-        f->score = (f64)overlap * 10.0;
-
-        /* Boost by importance and recency */
-        f->score *= (0.5 + imp_weight);
-        f->score *= recency;
-
-        /* Bonus for high-importance facts even without keyword match */
-        if (overlap == 0 && f->importance >= 8) {
-            f->score = 2.0 * recency;
-        }
-
-        /* Category bonus: "user" and "identity" facts always somewhat relevant */
-        if (strcmp(f->category, "user") == 0 || strcmp(f->category, "identity") == 0) {
-            f->score += 1.0;
-        }
+        /* Calculate TF-IDF score (will be computed after all facts loaded) */
+        f->score = 0.0;  /* Placeholder, computed below */
 
         count++;
     }
     sqlite3_finalize(stmt);
+
+    /* Calculate TF-IDF scores for all facts */
+    for (i32 i = 0; i < count; i++) {
+        SeaRecallFact* f = &candidates[i];
+        
+        /* Base TF-IDF score */
+        f64 tfidf = calculate_tfidf_score(query_kw, f, candidates, count);
+        
+        /* Importance weight (1.0 to 2.0) */
+        f64 imp_weight = 1.0 + ((f64)f->importance / 10.0);
+        
+        /* Recency score */
+        f64 recency = recency_score(f->accessed_at);
+        
+        /* Combined score: TF-IDF × importance × recency */
+        f->score = tfidf * imp_weight * recency;
+        
+        /* Bonus for high-importance facts even without keyword match */
+        if (tfidf < 0.1 && f->importance >= 8) {
+            f->score = 2.0 * recency;
+        }
+        
+        /* Category bonus: "user" and "identity" facts always somewhat relevant */
+        if (strcmp(f->category, "user") == 0 || strcmp(f->category, "identity") == 0) {
+            f->score += 1.0;
+        }
+    }
 
     /* Sort by score descending (simple insertion sort, N <= 500) */
     for (i32 i = 1; i < count; i++) {
