@@ -8,6 +8,9 @@
 #include "seaclaw/sea_shield.h"
 #include "seaclaw/sea_log.h"
 #include <string.h>
+#include <stdlib.h>
+#include <limits.h>
+#include <stdio.h>
 
 /* ── Grammar lookup tables (256-byte bitmaps) ─────────────── */
 /* 1 = allowed, 0 = rejected                                   */
@@ -292,4 +295,97 @@ const char* sea_grammar_name(SeaGrammarType grammar) {
         case SEA_GRAMMAR_BASE64:  return "BASE64";
         default:                   return "UNKNOWN";
     }
+}
+
+/* ── Path canonicalization (symlink escape prevention) ───── */
+
+bool sea_shield_canonicalize_path(const char* path, const char* workspace_dir, 
+                                   char* resolved, size_t resolved_size) {
+    if (!path || !workspace_dir || !resolved || resolved_size == 0) {
+        return false;
+    }
+
+    char canonical_workspace[PATH_MAX];
+    char canonical_path[PATH_MAX];
+
+    /* Resolve workspace directory to canonical form */
+    if (!realpath(workspace_dir, canonical_workspace)) {
+        SEA_LOG_WARN("SHIELD", "Failed to canonicalize workspace: %s", workspace_dir);
+        return false;
+    }
+
+    /* Build full path if input is relative */
+    char full_path[PATH_MAX];
+    if (path[0] == '/') {
+        snprintf(full_path, sizeof(full_path), "%s", path);
+    } else {
+        snprintf(full_path, sizeof(full_path), "%s/%s", workspace_dir, path);
+    }
+
+    /* Resolve to canonical form (follows symlinks) */
+    if (!realpath(full_path, canonical_path)) {
+        /* Path doesn't exist yet - try to resolve parent directory */
+        char parent[PATH_MAX];
+        size_t full_len = strlen(full_path);
+        if (full_len >= sizeof(parent)) {
+            SEA_LOG_WARN("SHIELD", "Path too long: %s", full_path);
+            return false;
+        }
+        memcpy(parent, full_path, full_len + 1);
+        
+        char* last_slash = strrchr(parent, '/');
+        if (last_slash) {
+            *last_slash = '\0';
+            char canonical_parent[PATH_MAX];
+            if (!realpath(parent, canonical_parent)) {
+                SEA_LOG_WARN("SHIELD", "Failed to canonicalize path: %s", full_path);
+                return false;
+            }
+            /* Reconstruct path with canonical parent */
+            size_t parent_len = strlen(canonical_parent);
+            size_t name_len = strlen(last_slash + 1);
+            if (parent_len + name_len + 2 > sizeof(canonical_path)) {
+                SEA_LOG_WARN("SHIELD", "Reconstructed path too long");
+                return false;
+            }
+            /* Safe: we've validated lengths above */
+            #pragma GCC diagnostic push
+            #pragma GCC diagnostic ignored "-Wformat-truncation"
+            snprintf(canonical_path, sizeof(canonical_path), "%s/%s", 
+                     canonical_parent, last_slash + 1);
+            #pragma GCC diagnostic pop
+        } else {
+            if (full_len >= sizeof(canonical_path)) {
+                SEA_LOG_WARN("SHIELD", "Path too long: %s", full_path);
+                return false;
+            }
+            memcpy(canonical_path, full_path, full_len + 1);
+        }
+    }
+
+    /* Verify canonical path is within workspace */
+    size_t workspace_len = strlen(canonical_workspace);
+    if (strncmp(canonical_path, canonical_workspace, workspace_len) != 0) {
+        SEA_LOG_WARN("SHIELD", "Path escape detected: %s -> %s (workspace: %s)",
+                     path, canonical_path, canonical_workspace);
+        return false;
+    }
+
+    /* Ensure path separator after workspace prefix (prevent /workspace vs /workspace_evil) */
+    if (canonical_path[workspace_len] != '\0' && canonical_path[workspace_len] != '/') {
+        SEA_LOG_WARN("SHIELD", "Path escape detected (prefix match): %s", canonical_path);
+        return false;
+    }
+
+    /* Copy resolved path to output */
+    if (strlen(canonical_path) >= resolved_size) {
+        SEA_LOG_WARN("SHIELD", "Resolved path too long: %s", canonical_path);
+        return false;
+    }
+    
+    strncpy(resolved, canonical_path, resolved_size - 1);
+    resolved[resolved_size - 1] = '\0';
+
+    SEA_LOG_DEBUG("SHIELD", "Path canonicalized: %s -> %s", path, resolved);
+    return true;
 }

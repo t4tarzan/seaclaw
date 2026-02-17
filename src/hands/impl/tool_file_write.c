@@ -47,8 +47,12 @@ SeaError tool_file_write(SeaSlice args, SeaArena* arena, SeaSlice* output) {
         *output = SEA_SLICE_LIT("Error: path rejected by Shield");
         return SEA_OK;
     }
-    if (strstr(p, "..")) {
-        *output = SEA_SLICE_LIT("Error: path traversal not allowed");
+
+    /* Canonicalize path and check for symlink escape */
+    char resolved_path[4096];
+    const char* workspace = ".";  /* Use current directory as workspace */
+    if (!sea_shield_canonicalize_path(p, workspace, resolved_path, sizeof(resolved_path))) {
+        *output = SEA_SLICE_LIT("Error: path escape detected (symlink or traversal blocked)");
         return SEA_OK;
     }
 
@@ -56,7 +60,7 @@ SeaError tool_file_write(SeaSlice args, SeaArena* arena, SeaSlice* output) {
     const u8* content = sep + 1;
     u32 content_len = args.len - path_len - 1;
 
-    FILE* f = fopen(p, "w");
+    FILE* f = fopen(resolved_path, "w");
     if (!f) {
         char err[256];
         int len = snprintf(err, sizeof(err), "Error: cannot open '%s' for writing", p);

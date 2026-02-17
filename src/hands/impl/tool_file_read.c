@@ -37,13 +37,15 @@ SeaError tool_file_read(SeaSlice args, SeaArena* arena, SeaSlice* output) {
         return SEA_OK;
     }
 
-    /* Reject path traversal */
-    if (strstr(p, "..")) {
-        *output = SEA_SLICE_LIT("Error: path traversal not allowed");
+    /* Canonicalize path and check for symlink escape */
+    char resolved_path[4096];
+    const char* workspace = ".";  /* Use current directory as workspace */
+    if (!sea_shield_canonicalize_path(p, workspace, resolved_path, sizeof(resolved_path))) {
+        *output = SEA_SLICE_LIT("Error: path escape detected (symlink or traversal blocked)");
         return SEA_OK;
     }
 
-    FILE* f = fopen(p, "r");
+    FILE* f = fopen(resolved_path, "r");
     if (!f) {
         char err[256];
         int len = snprintf(err, sizeof(err), "Error: cannot open '%s'", p);

@@ -66,6 +66,9 @@ bool sea_shield_validate_url(SeaSlice url);
 /* Check file magic bytes (PDF, PNG, etc.) */
 bool sea_shield_check_magic(SeaSlice data, const char* expected_type);
 
+/* Canonicalize path and verify it's within workspace (prevents symlink escape) */
+bool sea_shield_canonicalize_path(const char* path, const char* workspace_dir, char* resolved, size_t resolved_size);
+
 /* Get grammar name for logging */
 const char* sea_grammar_name(SeaGrammarType grammar);
 
