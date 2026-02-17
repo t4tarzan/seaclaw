@@ -12,8 +12,23 @@
 #include "seaclaw/sea_log.h"
 #include <stdio.h>
 #include <string.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdlib.h>
 
 #define MAX_OUTPUT_SIZE (8 * 1024)
+
+/* Safe environment variables - only these are passed to shell commands */
+static char* s_safe_env[] = {
+    "PATH=/usr/bin:/bin:/usr/local/bin",
+    "HOME=/tmp",
+    "TERM=xterm",
+    "USER=seaclaw",
+    "LANG=C.UTF-8",
+    NULL
+};
 
 /* Blocklist of dangerous commands */
 static bool is_dangerous(const char* cmd) {
@@ -60,27 +75,58 @@ SeaError tool_shell_exec(SeaSlice args, SeaArena* arena, SeaSlice* output) {
 
     SEA_LOG_INFO("HANDS", "shell_exec: %s", c);
 
-    /* Redirect stderr to stdout */
-    char full_cmd[2200];
-    snprintf(full_cmd, sizeof(full_cmd), "%s 2>&1", c);
-
-    FILE* pipe = popen(full_cmd, "r");
-    if (!pipe) {
-        *output = SEA_SLICE_LIT("Error: failed to execute command");
+    /* Create pipe for capturing output */
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        *output = SEA_SLICE_LIT("Error: failed to create pipe");
         return SEA_OK;
     }
 
-    u8* buf = (u8*)sea_arena_alloc(arena, MAX_OUTPUT_SIZE + 64, 1);
-    if (!buf) { pclose(pipe); return SEA_ERR_ARENA_FULL; }
+    /* Prepare arguments for /bin/sh -c "command" */
+    char* argv[] = { "/bin/sh", "-c", c, NULL };
 
-    size_t total = 0;
-    while (total < MAX_OUTPUT_SIZE) {
-        size_t n = fread(buf + total, 1, MAX_OUTPUT_SIZE - total, pipe);
-        if (n == 0) break;
-        total += n;
+    /* Spawn process with safe environment */
+    pid_t pid;
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    
+    /* Redirect stdout and stderr to pipe */
+    posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDERR_FILENO);
+    posix_spawn_file_actions_addclose(&actions, pipefd[0]);
+    posix_spawn_file_actions_addclose(&actions, pipefd[1]);
+
+    int spawn_result = posix_spawn(&pid, "/bin/sh", &actions, NULL, argv, s_safe_env);
+    posix_spawn_file_actions_destroy(&actions);
+
+    if (spawn_result != 0) {
+        close(pipefd[0]);
+        close(pipefd[1]);
+        *output = SEA_SLICE_LIT("Error: failed to spawn process");
+        return SEA_OK;
     }
 
-    int status = pclose(pipe);
+    /* Close write end in parent */
+    close(pipefd[1]);
+
+    /* Read output from pipe */
+    u8* buf = (u8*)sea_arena_alloc(arena, MAX_OUTPUT_SIZE + 64, 1);
+    if (!buf) {
+        close(pipefd[0]);
+        waitpid(pid, NULL, 0);
+        return SEA_ERR_ARENA_FULL;
+    }
+
+    size_t total = 0;
+    ssize_t n;
+    while (total < MAX_OUTPUT_SIZE && (n = read(pipefd[0], buf + total, MAX_OUTPUT_SIZE - total)) > 0) {
+        total += (size_t)n;
+    }
+    close(pipefd[0]);
+
+    /* Wait for process to complete */
+    int status;
+    waitpid(pid, &status, 0);
 
     if (total == MAX_OUTPUT_SIZE) {
         memcpy(buf + total, "\n... (truncated at 8KB)", 23);
