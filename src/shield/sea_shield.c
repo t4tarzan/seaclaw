@@ -11,6 +11,9 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <stdio.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
 
 /* ── Grammar lookup tables (256-byte bitmaps) ─────────────── */
 /* 1 = allowed, 0 = rejected                                   */
@@ -388,4 +391,113 @@ bool sea_shield_canonicalize_path(const char* path, const char* workspace_dir,
 
     SEA_LOG_DEBUG("SHIELD", "Path canonicalized: %s -> %s", path, resolved);
     return true;
+}
+
+/* ── SSRF Protection ──────────────────────────────────────── */
+
+static bool is_private_ipv4(u32 ip) {
+    /* Network byte order to host byte order */
+    u32 host_ip = ntohl(ip);
+    
+    /* 10.0.0.0/8 */
+    if ((host_ip & 0xFF000000) == 0x0A000000) return true;
+    
+    /* 172.16.0.0/12 */
+    if ((host_ip & 0xFFF00000) == 0xAC100000) return true;
+    
+    /* 192.168.0.0/16 */
+    if ((host_ip & 0xFFFF0000) == 0xC0A80000) return true;
+    
+    /* 127.0.0.0/8 (loopback) */
+    if ((host_ip & 0xFF000000) == 0x7F000000) return true;
+    
+    /* 169.254.0.0/16 (link-local) */
+    if ((host_ip & 0xFFFF0000) == 0xA9FE0000) return true;
+    
+    /* 0.0.0.0/8 */
+    if ((host_ip & 0xFF000000) == 0x00000000) return true;
+    
+    return false;
+}
+
+bool sea_shield_check_ssrf(const char* url) {
+    if (!url) return false;
+    
+    /* Extract hostname from URL */
+    const char* host_start = strstr(url, "://");
+    if (!host_start) {
+        /* No scheme, assume it's just a hostname */
+        host_start = url;
+    } else {
+        host_start += 3;  /* Skip "://" */
+    }
+    
+    /* Find end of hostname (before port or path) */
+    char hostname[256];
+    const char* host_end = host_start;
+    while (*host_end && *host_end != ':' && *host_end != '/' && *host_end != '?') {
+        host_end++;
+    }
+    
+    size_t host_len = (size_t)(host_end - host_start);
+    if (host_len == 0 || host_len >= sizeof(hostname)) {
+        SEA_LOG_WARN("SHIELD", "Invalid hostname in URL: %s", url);
+        return false;
+    }
+    
+    memcpy(hostname, host_start, host_len);
+    hostname[host_len] = '\0';
+    
+    /* Check for cloud metadata endpoints */
+    const char* metadata_endpoints[] = {
+        "169.254.169.254",  /* AWS, Azure, GCP metadata */
+        "metadata.google.internal",
+        "metadata",
+        NULL
+    };
+    
+    for (int i = 0; metadata_endpoints[i]; i++) {
+        if (strcmp(hostname, metadata_endpoints[i]) == 0) {
+            SEA_LOG_WARN("SHIELD", "SSRF blocked: cloud metadata endpoint: %s", hostname);
+            return false;
+        }
+    }
+    
+    /* Resolve hostname to IP address */
+    struct addrinfo hints, *result, *rp;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;     /* Allow IPv4 or IPv6 */
+    hints.ai_socktype = SOCK_STREAM;
+    
+    int status = getaddrinfo(hostname, NULL, &hints, &result);
+    if (status != 0) {
+        SEA_LOG_WARN("SHIELD", "Failed to resolve hostname: %s (%s)", hostname, gai_strerror(status));
+        return false;
+    }
+    
+    /* Check all resolved IPs */
+    bool is_safe = true;
+    for (rp = result; rp != NULL; rp = rp->ai_next) {
+        if (rp->ai_family == AF_INET) {
+            struct sockaddr_in* ipv4 = (struct sockaddr_in*)rp->ai_addr;
+            u32 ip = ipv4->sin_addr.s_addr;
+            
+            if (is_private_ipv4(ip)) {
+                char ip_str[INET_ADDRSTRLEN];
+                inet_ntop(AF_INET, &ipv4->sin_addr, ip_str, sizeof(ip_str));
+                SEA_LOG_WARN("SHIELD", "SSRF blocked: %s resolves to private IP: %s", hostname, ip_str);
+                is_safe = false;
+                break;
+            }
+        }
+        /* TODO: Add IPv6 private range checks if needed */
+    }
+    
+    freeaddrinfo(result);
+    
+    if (is_safe) {
+        SEA_LOG_DEBUG("SHIELD", "SSRF check passed for: %s", hostname);
+    }
+    
+    return is_safe;
 }
