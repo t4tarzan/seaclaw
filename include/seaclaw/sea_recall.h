@@ -83,4 +83,8 @@ u32 sea_recall_count(SeaRecall* rc);
 /* Get fact count by category. */
 u32 sea_recall_count_category(SeaRecall* rc, const char* category);
 
+/* Automated memory hygiene: delete low-value, old, unaccessed facts.
+ * Returns number of facts deleted. */
+u32 sea_recall_cleanup(SeaRecall* rc, i32 min_importance, i32 min_access_count, i32 days_old);
+
 #endif /* SEA_RECALL_H */

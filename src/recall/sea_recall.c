@@ -442,3 +442,43 @@ u32 sea_recall_count_category(SeaRecall* rc, const char* category) {
     sqlite3_finalize(stmt);
     return count;
 }
+
+/* ── Automated Memory Hygiene ─────────────────────────────── */
+
+u32 sea_recall_cleanup(SeaRecall* rc, i32 min_importance, i32 min_access_count, i32 days_old) {
+    if (!rc || !rc->initialized) return 0;
+
+    /* Delete facts that are:
+     * - Low importance (< min_importance)
+     * - Rarely accessed (access_count < min_access_count)
+     * - Old (created more than days_old days ago)
+     */
+    const char* sql = 
+        "DELETE FROM recall_facts "
+        "WHERE importance < ? "
+        "AND access_count < ? "
+        "AND created_at < datetime('now', '-' || ? || ' days')";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(rc->db->handle, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        SEA_LOG_ERROR("RECALL", "Failed to prepare cleanup: %s", 
+                      sqlite3_errmsg(rc->db->handle));
+        return 0;
+    }
+
+    sqlite3_bind_int(stmt, 1, min_importance);
+    sqlite3_bind_int(stmt, 2, min_access_count);
+    sqlite3_bind_int(stmt, 3, days_old);
+
+    int rc_step = sqlite3_step(stmt);
+    u32 deleted = (u32)sqlite3_changes(rc->db->handle);
+    sqlite3_finalize(stmt);
+
+    if (rc_step == SQLITE_DONE && deleted > 0) {
+        SEA_LOG_INFO("RECALL", "Memory hygiene: deleted %u low-value facts "
+                     "(importance < %d, access_count < %d, age > %d days)",
+                     deleted, min_importance, min_access_count, days_old);
+    }
+
+    return deleted;
+}
