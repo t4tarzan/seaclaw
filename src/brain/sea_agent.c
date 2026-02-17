@@ -200,23 +200,116 @@ static void strbuf_append_json_escaped(StrBuf* sb, const char* s) {
     }
 }
 
+/* ── Detect needed tool categories from query ─────────────── */
+
+static u32 detect_needed_categories(const char* query) {
+    if (!query) return SEA_TOOL_CAT_CORE | SEA_TOOL_CAT_FILE;
+    
+    u32 cats = SEA_TOOL_CAT_CORE;  /* Always include core tools */
+    
+    /* Convert to lowercase for case-insensitive matching */
+    char lower[1024];
+    size_t qlen = strlen(query);
+    if (qlen >= sizeof(lower)) qlen = sizeof(lower) - 1;
+    for (size_t i = 0; i < qlen; i++) {
+        lower[i] = (char)((query[i] >= 'A' && query[i] <= 'Z') ? query[i] + 32 : query[i]);
+    }
+    lower[qlen] = '\0';
+    
+    /* File operations */
+    if (strstr(lower, "file") || strstr(lower, "read") || strstr(lower, "write") ||
+        strstr(lower, "directory") || strstr(lower, "folder") || strstr(lower, "path")) {
+        cats |= SEA_TOOL_CAT_FILE;
+    }
+    
+    /* Shell/command execution */
+    if (strstr(lower, "run") || strstr(lower, "execute") || strstr(lower, "command") ||
+        strstr(lower, "shell") || strstr(lower, "script") || strstr(lower, "process")) {
+        cats |= SEA_TOOL_CAT_SHELL | SEA_TOOL_CAT_SYSTEM;
+    }
+    
+    /* Web/HTTP */
+    if (strstr(lower, "web") || strstr(lower, "http") || strstr(lower, "url") ||
+        strstr(lower, "fetch") || strstr(lower, "download") || strstr(lower, "search") ||
+        strstr(lower, "api") || strstr(lower, "request")) {
+        cats |= SEA_TOOL_CAT_WEB;
+    }
+    
+    /* Text processing */
+    if (strstr(lower, "text") || strstr(lower, "grep") || strstr(lower, "search") ||
+        strstr(lower, "find") || strstr(lower, "replace") || strstr(lower, "diff") ||
+        strstr(lower, "transform") || strstr(lower, "format")) {
+        cats |= SEA_TOOL_CAT_TEXT;
+    }
+    
+    /* Data/JSON/CSV */
+    if (strstr(lower, "json") || strstr(lower, "csv") || strstr(lower, "data") ||
+        strstr(lower, "database") || strstr(lower, "query") || strstr(lower, "parse")) {
+        cats |= SEA_TOOL_CAT_DATA;
+    }
+    
+    /* System info */
+    if (strstr(lower, "system") || strstr(lower, "network") || strstr(lower, "disk") ||
+        strstr(lower, "memory") || strstr(lower, "cpu") || strstr(lower, "status") ||
+        strstr(lower, "info") || strstr(lower, "list")) {
+        cats |= SEA_TOOL_CAT_SYSTEM;
+    }
+    
+    /* Time/calendar */
+    if (strstr(lower, "time") || strstr(lower, "date") || strstr(lower, "calendar") ||
+        strstr(lower, "cron") || strstr(lower, "schedule")) {
+        cats |= SEA_TOOL_CAT_TIME;
+    }
+    
+    /* Crypto/encoding */
+    if (strstr(lower, "hash") || strstr(lower, "encode") || strstr(lower, "decode") ||
+        strstr(lower, "encrypt") || strstr(lower, "password") || strstr(lower, "base64")) {
+        cats |= SEA_TOOL_CAT_CRYPTO;
+    }
+    
+    /* Task management */
+    if (strstr(lower, "task") || strstr(lower, "todo") || strstr(lower, "remember") ||
+        strstr(lower, "memory") || strstr(lower, "recall")) {
+        cats |= SEA_TOOL_CAT_TASK;
+    }
+    
+    /* Default: include file and shell for general queries */
+    if (cats == SEA_TOOL_CAT_CORE) {
+        cats |= SEA_TOOL_CAT_FILE | SEA_TOOL_CAT_SHELL;
+    }
+    
+    return cats;
+}
+
 /* ── Build system prompt with tool descriptions ───────────── */
 
 const char* sea_agent_build_system_prompt(SeaArena* arena) {
+    return sea_agent_build_system_prompt_selective(arena, NULL);
+}
+
+const char* sea_agent_build_system_prompt_selective(SeaArena* arena, const char* query) {
     StrBuf sb = strbuf_new(arena, 2048);
     strbuf_append(&sb, DEFAULT_SYSTEM_PROMPT);
 
+    /* Detect needed categories from query */
+    u32 needed_cats = query ? detect_needed_categories(query) : 
+                              (SEA_TOOL_CAT_CORE | SEA_TOOL_CAT_FILE | SEA_TOOL_CAT_SHELL);
+
     u32 count = sea_tools_count();
+    u32 injected = 0;
     for (u32 i = 0; i < count; i++) {
         const SeaTool* t = sea_tool_by_id(i);
-        if (t) {
+        if (t && (t->category & needed_cats)) {
             strbuf_append(&sb, "- ");
             strbuf_append(&sb, t->name);
             strbuf_append(&sb, ": ");
             strbuf_append(&sb, t->description);
             strbuf_append(&sb, "\n");
+            injected++;
         }
     }
+    
+    SEA_LOG_DEBUG("AGENT", "Injected %u/%u tools (categories: 0x%x)", injected, count, needed_cats);
 
     strbuf_append(&sb,
         "\nTo call a tool, wrap the JSON in XML tags like this:\n"

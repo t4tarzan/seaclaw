@@ -133,6 +133,9 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
 /* Build the system prompt with tool descriptions. */
 const char* sea_agent_build_system_prompt(SeaArena* arena);
 
+/* Build system prompt with selective tool injection based on query. */
+const char* sea_agent_build_system_prompt_selective(SeaArena* arena, const char* query);
+
 /* Hot-swap the model at runtime. Thread-safe. */
 void sea_agent_set_model(SeaAgentConfig* cfg, const char* model);
 
