@@ -219,9 +219,11 @@ const char* sea_agent_build_system_prompt(SeaArena* arena) {
     }
 
     strbuf_append(&sb,
-        "\nTo call a tool, include this exact JSON in your response:\n"
-        "{\"tool_call\": {\"name\": \"tool_name\", \"args\": \"arguments\"}}\n"
-        "After the tool result is returned, provide your final answer to the user.");
+        "\nTo call a tool, wrap the JSON in XML tags like this:\n"
+        "<tool_call>{\"name\": \"tool_name\", \"args\": \"arguments\"}</tool_call>\n"
+        "Example: <tool_call>{\"name\": \"file_read\", \"args\": \"config.json\"}</tool_call>\n"
+        "After the tool result is returned, provide your final answer to the user.\n"
+        "Note: Legacy format {\"tool_call\": {...}} is also supported but XML tags are preferred.");
 
     return sb.buf;
 }
@@ -350,51 +352,106 @@ static ParsedResponse parse_llm_response(const char* body, u32 body_len,
         pr.text = unescaped;
     }
 
-    /* Check if content contains a tool_call JSON block */
+    /* Check for XML-tagged tool call first (preferred format) */
     const char* search = pr.text;
-    const char* tc_start = strstr(search, "{\"tool_call\"");
-    if (!tc_start) tc_start = strstr(search, "{ \"tool_call\"");
-    if (tc_start) {
-        /* Find the matching closing brace */
-        int depth = 0;
-        const char* p = tc_start;
-        const char* end = NULL;
-        for (; *p; p++) {
-            if (*p == '{') depth++;
-            else if (*p == '}') {
-                depth--;
-                if (depth == 0) { end = p + 1; break; }
-            }
+    const char* xml_start = strstr(search, "<tool_call>");
+    const char* xml_end = xml_start ? strstr(xml_start, "</tool_call>") : NULL;
+    
+    if (xml_start && xml_end) {
+        /* Extract JSON between XML tags */
+        xml_start += 11;  /* Skip "<tool_call>" */
+        u32 json_len = (u32)(xml_end - xml_start);
+        
+        /* Trim whitespace */
+        while (json_len > 0 && (*xml_start == ' ' || *xml_start == '\n' || *xml_start == '\r' || *xml_start == '\t')) {
+            xml_start++;
+            json_len--;
         }
-
-        if (end) {
-            u32 tc_len = (u32)(end - tc_start);
-            SeaSlice tc_input = { .data = (const u8*)tc_start, .len = tc_len };
+        while (json_len > 0 && (xml_start[json_len-1] == ' ' || xml_start[json_len-1] == '\n' || 
+                                xml_start[json_len-1] == '\r' || xml_start[json_len-1] == '\t')) {
+            json_len--;
+        }
+        
+        if (json_len > 0) {
+            SeaSlice tc_input = { .data = (const u8*)xml_start, .len = json_len };
             SeaJsonValue tc_root;
             if (sea_json_parse(tc_input, arena, &tc_root) == SEA_OK) {
-                const SeaJsonValue* tc = sea_json_get(&tc_root, "tool_call");
-                if (tc) {
-                    SeaSlice name_sl = sea_json_get_string(tc, "name");
-                    SeaSlice args_sl = sea_json_get_string(tc, "args");
+                SeaSlice name_sl = sea_json_get_string(&tc_root, "name");
+                SeaSlice args_sl = sea_json_get_string(&tc_root, "args");
+                
+                /* Also support "arguments" key for compatibility */
+                if (args_sl.len == 0) {
+                    args_sl = sea_json_get_string(&tc_root, "arguments");
+                }
 
-                    if (name_sl.len > 0) {
-                        char* name = (char*)sea_arena_alloc(arena, name_sl.len + 1, 1);
-                        if (name) {
-                            memcpy(name, name_sl.data, name_sl.len);
-                            name[name_sl.len] = '\0';
-                            pr.tool_name = name;
+                if (name_sl.len > 0) {
+                    char* name = (char*)sea_arena_alloc(arena, name_sl.len + 1, 1);
+                    if (name) {
+                        memcpy(name, name_sl.data, name_sl.len);
+                        name[name_sl.len] = '\0';
+                        pr.tool_name = name;
+                    }
+
+                    char* args = (char*)sea_arena_alloc(arena, args_sl.len + 1, 1);
+                    if (args) {
+                        memcpy(args, args_sl.data, args_sl.len);
+                        args[args_sl.len] = '\0';
+                        pr.tool_args = args;
+                    }
+
+                    pr.has_tool_call = true;
+                    SEA_LOG_INFO("AGENT", "Detected XML tool call: %s(%s)",
+                                 pr.tool_name, pr.tool_args ? pr.tool_args : "");
+                }
+            }
+        }
+    }
+    /* Fallback: Check for legacy JSON tool_call format */
+    else {
+        const char* tc_start = strstr(search, "{\"tool_call\"");
+        if (!tc_start) tc_start = strstr(search, "{ \"tool_call\"");
+        if (tc_start) {
+            /* Find the matching closing brace */
+            int depth = 0;
+            const char* p = tc_start;
+            const char* end = NULL;
+            for (; *p; p++) {
+                if (*p == '{') depth++;
+                else if (*p == '}') {
+                    depth--;
+                    if (depth == 0) { end = p + 1; break; }
+                }
+            }
+
+            if (end) {
+                u32 tc_len = (u32)(end - tc_start);
+                SeaSlice tc_input = { .data = (const u8*)tc_start, .len = tc_len };
+                SeaJsonValue tc_root;
+                if (sea_json_parse(tc_input, arena, &tc_root) == SEA_OK) {
+                    const SeaJsonValue* tc = sea_json_get(&tc_root, "tool_call");
+                    if (tc) {
+                        SeaSlice name_sl = sea_json_get_string(tc, "name");
+                        SeaSlice args_sl = sea_json_get_string(tc, "args");
+
+                        if (name_sl.len > 0) {
+                            char* name = (char*)sea_arena_alloc(arena, name_sl.len + 1, 1);
+                            if (name) {
+                                memcpy(name, name_sl.data, name_sl.len);
+                                name[name_sl.len] = '\0';
+                                pr.tool_name = name;
+                            }
+
+                            char* args = (char*)sea_arena_alloc(arena, args_sl.len + 1, 1);
+                            if (args) {
+                                memcpy(args, args_sl.data, args_sl.len);
+                                args[args_sl.len] = '\0';
+                                pr.tool_args = args;
+                            }
+
+                            pr.has_tool_call = true;
+                            SEA_LOG_INFO("AGENT", "Detected legacy JSON tool call: %s(%s)",
+                                         pr.tool_name, pr.tool_args ? pr.tool_args : "");
                         }
-
-                        char* args = (char*)sea_arena_alloc(arena, args_sl.len + 1, 1);
-                        if (args) {
-                            memcpy(args, args_sl.data, args_sl.len);
-                            args[args_sl.len] = '\0';
-                            pr.tool_args = args;
-                        }
-
-                        pr.has_tool_call = true;
-                        SEA_LOG_INFO("AGENT", "Detected tool call: %s(%s)",
-                                     pr.tool_name, pr.tool_args ? pr.tool_args : "");
                     }
                 }
             }
