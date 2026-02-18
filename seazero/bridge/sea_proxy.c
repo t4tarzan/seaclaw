@@ -58,9 +58,16 @@ static void send_response(int fd, int status, const char* status_text,
         "\r\n",
         status, status_text, content_type, body_len);
 
-    (void)write(fd, header, (size_t)hlen);
+    ssize_t written = write(fd, header, (size_t)hlen);
+    if (written < 0) {
+        SEA_LOG_ERROR("PROXY", "Failed to write response header: %s", strerror(errno));
+        return;
+    }
     if (body && body_len > 0) {
-        (void)write(fd, body, (size_t)body_len);
+        written = write(fd, body, (size_t)body_len);
+        if (written < 0) {
+            SEA_LOG_ERROR("PROXY", "Failed to write response body: %s", strerror(errno));
+        }
     }
 }
 
