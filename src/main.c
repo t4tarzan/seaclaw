@@ -171,6 +171,16 @@ static void cmd_help(void) {
     printf("    /tasks             List pending tasks\n");
     printf("    /clear             Clear screen\n");
     printf("    /quit              Exit Sea-Claw\n");
+    printf("\n  \033[1mModules:\033[0m\n");
+    printf("    /skills            List installed skills\n");
+    printf("    /auth              List auth tokens\n");
+    printf("    /auth create <lbl> Create a new auth token\n");
+    printf("    /auth revoke <pfx> Revoke token by prefix\n");
+    printf("    /heartbeat         Heartbeat status + pending tasks\n");
+    printf("    /graph             Knowledge graph stats\n");
+    printf("    /graph add <t> <n> Add entity (type: person/project/...)\n");
+    printf("    /graph link <f><r><t> Link two entities\n");
+    printf("    /graph search <q>  Search entities by name\n");
     printf("\n  \033[1mSeaZero (Agent Zero):\033[0m\n");
     printf("    /agents            List Agent Zero instances\n");
     printf("    /delegate <task>   Delegate task to Agent Zero\n");
@@ -233,6 +243,256 @@ static void cmd_exec(const char* input) {
     }
     printf("  \033[2m(%lu ms)\033[0m\n\n", (unsigned long)(t1 - t0));
 
+    sea_arena_reset(&s_request_arena);
+}
+
+/* ── TUI: /skills ─────────────────────────────────────────── */
+
+static void cmd_skills(void) {
+    u32 count = sea_skill_count(&s_skill_reg);
+    printf("\n  \033[1mSkills (%u):\033[0m\n", count);
+    if (count == 0) {
+        printf("    (none installed — use /exec skill_install <url>)\n");
+    }
+    for (u32 i = 0; i < count; i++) {
+        const SeaSkill* s = &s_skill_reg.skills[i];
+        const char* icon = s->enabled ? "\033[32m●\033[0m" : "\033[31m○\033[0m";
+        printf("    %s %-20s  trigger: %-12s  %s\n",
+               icon, s->name, s->trigger[0] ? s->trigger : "(none)",
+               s->enabled ? "enabled" : "disabled");
+    }
+    printf("\n");
+}
+
+/* ── TUI: /auth ──────────────────────────────────────────── */
+
+static void cmd_auth(const char* input) {
+    if (!s_auth) {
+        printf("  Auth not initialized.\n");
+        return;
+    }
+
+    /* /auth create <label> */
+    if (strncmp(input, "/auth create ", 13) == 0) {
+        const char* label = input + 13;
+        while (*label == ' ') label++;
+        if (*label == '\0') {
+            printf("  Usage: /auth create <label>\n");
+            return;
+        }
+        char token[SEA_TOKEN_LEN + 1];
+        SeaError err = sea_auth_create_token(s_auth, label, SEA_PERM_ALL, 0, token);
+        if (err == SEA_OK) {
+            printf("\n  \033[32m✓\033[0m Token created for '%s'\n", label);
+            printf("    Token: %.16s...%.4s\n", token, token + SEA_TOKEN_LEN - 4);
+            printf("    Perms: ALL (0xFF)\n");
+            printf("    \033[33m⚠ Save this token — it won't be shown again in full.\033[0m\n\n");
+        } else {
+            printf("  \033[31m✗\033[0m Failed: %s\n", sea_error_str(err));
+        }
+        return;
+    }
+
+    /* /auth revoke <token_prefix> */
+    if (strncmp(input, "/auth revoke ", 13) == 0) {
+        const char* prefix = input + 13;
+        while (*prefix == ' ') prefix++;
+        /* Find token by prefix match */
+        bool found = false;
+        for (u32 i = 0; i < s_auth->count; i++) {
+            if (strncmp(s_auth->tokens[i].token, prefix, strlen(prefix)) == 0) {
+                SeaError err = sea_auth_revoke(s_auth, s_auth->tokens[i].token);
+                if (err == SEA_OK) {
+                    printf("  \033[32m✓\033[0m Revoked token '%s'\n", s_auth->tokens[i].label);
+                    found = true;
+                }
+                break;
+            }
+        }
+        if (!found) printf("  \033[31m✗\033[0m No token matching prefix '%s'\n", prefix);
+        return;
+    }
+
+    /* /auth — list tokens */
+    u32 total = s_auth->count;
+    u32 active = sea_auth_active_count(s_auth);
+    printf("\n  \033[1mAuth Tokens (%u total, %u active):\033[0m\n", total, active);
+    if (total == 0) {
+        printf("    (none — create with /auth create <label>)\n");
+    }
+    for (u32 i = 0; i < total; i++) {
+        const SeaAuthToken* t = &s_auth->tokens[i];
+        const char* icon = t->revoked ? "\033[31m✗\033[0m" : "\033[32m●\033[0m";
+        printf("    %s %-20s  perms: 0x%02X  token: %.8s...\n",
+               icon, t->label, t->permissions, t->token);
+    }
+    printf("\n");
+}
+
+/* ── TUI: /heartbeat ─────────────────────────────────────── */
+
+static void cmd_heartbeat(void) {
+    if (!s_heartbeat) {
+        printf("  Heartbeat not initialized (needs memory system).\n");
+        return;
+    }
+    printf("\n  \033[1mHeartbeat Status:\033[0m\n");
+    printf("    Enabled:    %s\n", s_heartbeat->enabled ? "\033[32myes\033[0m" : "\033[31mno\033[0m");
+    printf("    Interval:   %llu sec (%llu min)\n",
+           (unsigned long long)s_heartbeat->interval_sec,
+           (unsigned long long)s_heartbeat->interval_sec / 60);
+    printf("    Checks:     %u\n", sea_heartbeat_check_count(s_heartbeat));
+    printf("    Injected:   %u tasks\n", sea_heartbeat_injected_count(s_heartbeat));
+    printf("    DB logging: %s\n", s_heartbeat->db ? "\033[32myes\033[0m" : "no");
+
+    /* Show pending tasks from HEARTBEAT.md */
+    SeaHeartbeatTask tasks[SEA_HEARTBEAT_MAX_TASKS];
+    u32 pending = sea_heartbeat_parse(s_heartbeat, tasks, SEA_HEARTBEAT_MAX_TASKS);
+    if (pending > 0) {
+        printf("\n  \033[1mPending Tasks (%u):\033[0m\n", pending);
+        for (u32 i = 0; i < pending; i++) {
+            printf("    ○ [L%u] %s\n", tasks[i].line, tasks[i].text);
+        }
+    } else {
+        printf("\n    No pending tasks in HEARTBEAT.md\n");
+    }
+    printf("\n");
+}
+
+/* ── TUI: /graph ─────────────────────────────────────────── */
+
+static const char* entity_type_str(SeaEntityType t) {
+    switch (t) {
+        case SEA_ENTITY_PERSON:     return "person";
+        case SEA_ENTITY_PROJECT:    return "project";
+        case SEA_ENTITY_DECISION:   return "decision";
+        case SEA_ENTITY_COMMITMENT: return "commitment";
+        case SEA_ENTITY_TOPIC:      return "topic";
+        case SEA_ENTITY_TOOL:       return "tool";
+        case SEA_ENTITY_LOCATION:   return "location";
+        case SEA_ENTITY_CUSTOM:     return "custom";
+    }
+    return "unknown";
+}
+
+static SeaEntityType parse_entity_type(const char* s) {
+    if (strcmp(s, "person") == 0)     return SEA_ENTITY_PERSON;
+    if (strcmp(s, "project") == 0)    return SEA_ENTITY_PROJECT;
+    if (strcmp(s, "decision") == 0)   return SEA_ENTITY_DECISION;
+    if (strcmp(s, "commitment") == 0) return SEA_ENTITY_COMMITMENT;
+    if (strcmp(s, "topic") == 0)      return SEA_ENTITY_TOPIC;
+    if (strcmp(s, "tool") == 0)       return SEA_ENTITY_TOOL;
+    if (strcmp(s, "location") == 0)   return SEA_ENTITY_LOCATION;
+    return SEA_ENTITY_CUSTOM;
+}
+
+static SeaRelType parse_rel_type(const char* s) {
+    if (strcmp(s, "works_on") == 0)     return SEA_REL_WORKS_ON;
+    if (strcmp(s, "decided") == 0)      return SEA_REL_DECIDED;
+    if (strcmp(s, "owns") == 0)         return SEA_REL_OWNS;
+    if (strcmp(s, "depends_on") == 0)   return SEA_REL_DEPENDS_ON;
+    if (strcmp(s, "mentioned_in") == 0) return SEA_REL_MENTIONED_IN;
+    if (strcmp(s, "related_to") == 0)   return SEA_REL_RELATED_TO;
+    if (strcmp(s, "blocked_by") == 0)   return SEA_REL_BLOCKED_BY;
+    if (strcmp(s, "assigned_to") == 0)  return SEA_REL_ASSIGNED_TO;
+    return SEA_REL_CUSTOM;
+}
+
+static void cmd_graph(const char* input) {
+    if (!s_graph) {
+        printf("  Knowledge graph not initialized (needs database).\n");
+        return;
+    }
+
+    /* /graph add <type> <name> [summary] */
+    if (strncmp(input, "/graph add ", 11) == 0) {
+        const char* p = input + 11;
+        while (*p == ' ') p++;
+        char type_str[32], name[SEA_ENTITY_NAME_MAX], summary[SEA_ENTITY_SUMMARY_MAX] = "";
+        if (sscanf(p, "%31s %127[^ ] %511[^\n]", type_str, name, summary) < 2) {
+            printf("  Usage: /graph add <type> <name> [summary]\n");
+            printf("  Types: person, project, decision, commitment, topic, tool, location\n");
+            return;
+        }
+        SeaEntityType etype = parse_entity_type(type_str);
+        i32 id = sea_graph_entity_upsert(s_graph, etype, name, summary);
+        if (id >= 0) {
+            printf("  \033[32m✓\033[0m Entity #%d: %s (%s)\n", id, name, type_str);
+        } else {
+            printf("  \033[31m✗\033[0m Failed to add entity\n");
+        }
+        sea_arena_reset(&s_request_arena);
+        return;
+    }
+
+    /* /graph link <from_name> <relation> <to_name> */
+    if (strncmp(input, "/graph link ", 12) == 0) {
+        const char* p = input + 12;
+        while (*p == ' ') p++;
+        char from[SEA_ENTITY_NAME_MAX], rel[64], to[SEA_ENTITY_NAME_MAX];
+        if (sscanf(p, "%127s %63s %127s", from, rel, to) != 3) {
+            printf("  Usage: /graph link <from> <relation> <to>\n");
+            printf("  Relations: works_on, decided, owns, depends_on, related_to, blocked_by, assigned_to\n");
+            return;
+        }
+        SeaGraphEntity* fe = sea_graph_entity_find(s_graph, from, &s_request_arena);
+        SeaGraphEntity* te = sea_graph_entity_find(s_graph, to, &s_request_arena);
+        if (!fe) { printf("  \033[31m✗\033[0m Entity '%s' not found\n", from); sea_arena_reset(&s_request_arena); return; }
+        if (!te) { printf("  \033[31m✗\033[0m Entity '%s' not found\n", to); sea_arena_reset(&s_request_arena); return; }
+        SeaRelType rtype = parse_rel_type(rel);
+        i32 rid = sea_graph_relate(s_graph, fe->id, te->id, rtype, rel);
+        if (rid >= 0) {
+            printf("  \033[32m✓\033[0m Relation #%d: %s —[%s]→ %s\n", rid, from, rel, to);
+        } else {
+            printf("  \033[31m✗\033[0m Failed to create relation\n");
+        }
+        sea_arena_reset(&s_request_arena);
+        return;
+    }
+
+    /* /graph search <query> */
+    if (strncmp(input, "/graph search ", 14) == 0) {
+        const char* query = input + 14;
+        while (*query == ' ') query++;
+        SeaGraphEntity results[SEA_GRAPH_MAX_RESULTS];
+        u32 count = sea_graph_entity_search(s_graph, query, results,
+                                             SEA_GRAPH_MAX_RESULTS, &s_request_arena);
+        printf("\n  \033[1mGraph Search: \"%s\" (%u results):\033[0m\n", query, count);
+        for (u32 i = 0; i < count; i++) {
+            printf("    #%-4d [%-10s] %-20s  %s\n",
+                   results[i].id, entity_type_str(results[i].type),
+                   results[i].name,
+                   results[i].summary[0] ? results[i].summary : "");
+        }
+        if (count == 0) printf("    (no matches)\n");
+        printf("\n");
+        sea_arena_reset(&s_request_arena);
+        return;
+    }
+
+    /* /graph — show stats */
+    u32 total = sea_graph_entity_count(s_graph);
+    printf("\n  \033[1mKnowledge Graph:\033[0m\n");
+    printf("    Entities: %u\n", total);
+
+    /* Count by type */
+    static const SeaEntityType types[] = {
+        SEA_ENTITY_PERSON, SEA_ENTITY_PROJECT, SEA_ENTITY_DECISION,
+        SEA_ENTITY_COMMITMENT, SEA_ENTITY_TOPIC, SEA_ENTITY_TOOL,
+        SEA_ENTITY_LOCATION, SEA_ENTITY_CUSTOM
+    };
+    for (u32 i = 0; i < 8; i++) {
+        SeaGraphEntity tmp[1];
+        u32 c = sea_graph_entity_list(s_graph, types[i], tmp, 0, &s_request_arena);
+        if (c > 0) {
+            printf("      %-12s %u\n", entity_type_str(types[i]), c);
+        }
+    }
+    printf("\n  Commands:\n");
+    printf("    /graph add <type> <name> [summary]\n");
+    printf("    /graph link <from> <relation> <to>\n");
+    printf("    /graph search <query>\n");
+    printf("\n");
     sea_arena_reset(&s_request_arena);
 }
 
@@ -373,6 +633,14 @@ static void dispatch_command(const char* input) {
             printf("\n");
             sea_arena_reset(&s_request_arena);
         }
+    } else if (strcmp(input, "/skills") == 0) {
+        cmd_skills();
+    } else if (strcmp(input, "/auth") == 0 || strncmp(input, "/auth ", 6) == 0) {
+        cmd_auth(input);
+    } else if (strcmp(input, "/heartbeat") == 0) {
+        cmd_heartbeat();
+    } else if (strcmp(input, "/graph") == 0 || strncmp(input, "/graph ", 7) == 0) {
+        cmd_graph(input);
     } else if (strcmp(input, "/clear") == 0) {
         printf("\033[2J\033[H");
         printf("%s\n", BANNER);
