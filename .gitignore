@@ -71,3 +71,4 @@ test_ext
 test_auth
 test_heartbeat
 test_graph
+test_persist

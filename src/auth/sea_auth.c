@@ -5,12 +5,18 @@
  */
 
 #include "seaclaw/sea_auth.h"
+#include "seaclaw/sea_db.h"
 #include "seaclaw/sea_log.h"
 
+#include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+/* ── Access internal DB handle ───────────────────────────── */
+
+struct SeaDb { sqlite3* handle; };
 
 /* ── Token Generation ─────────────────────────────────────── */
 
@@ -43,7 +49,114 @@ void sea_auth_init(SeaAuth* auth, bool enabled) {
     if (!auth) return;
     memset(auth, 0, sizeof(*auth));
     auth->enabled = enabled;
-    SEA_LOG_INFO("AUTH", "Token auth %s", enabled ? "enabled" : "disabled (dev mode)");
+    auth->db = NULL;
+    SEA_LOG_INFO("AUTH", "Token auth %s (in-memory)", enabled ? "enabled" : "disabled");
+}
+
+SeaError sea_auth_init_db(SeaAuth* auth, bool enabled, SeaDb* db) {
+    if (!auth || !db) return SEA_ERR_INVALID_INPUT;
+    memset(auth, 0, sizeof(*auth));
+    auth->enabled = enabled;
+    auth->db = db;
+
+    sqlite3_exec(db->handle,
+        "CREATE TABLE IF NOT EXISTS auth_tokens ("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  token TEXT NOT NULL UNIQUE,"
+        "  label TEXT DEFAULT '',"
+        "  permissions INTEGER NOT NULL DEFAULT 0,"
+        "  created_at INTEGER NOT NULL,"
+        "  expires_at INTEGER DEFAULT 0,"
+        "  revoked INTEGER DEFAULT 0,"
+        "  allowed_tools TEXT DEFAULT ''"
+        ");",
+        NULL, NULL, NULL);
+
+    sea_auth_load(auth);
+    SEA_LOG_INFO("AUTH", "Token auth %s (SQLite-backed, loaded %u tokens)",
+                 enabled ? "enabled" : "disabled", auth->count);
+    return SEA_OK;
+}
+
+/* ── Save / Load ──────────────────────────────────────────── */
+
+SeaError sea_auth_save(SeaAuth* auth) {
+    if (!auth || !auth->db) return SEA_ERR_INVALID_INPUT;
+
+    sqlite3_exec(auth->db->handle, "DELETE FROM auth_tokens;", NULL, NULL, NULL);
+
+    for (u32 i = 0; i < auth->count; i++) {
+        const SeaAuthToken* t = &auth->tokens[i];
+
+        /* Build allowed_tools CSV */
+        char tools_csv[SEA_AUTH_MAX_ALLOWED_TOOLS * SEA_AUTH_TOOL_NAME_MAX];
+        tools_csv[0] = '\0';
+        for (u32 j = 0; j < t->allowed_tool_count; j++) {
+            if (j > 0) strncat(tools_csv, ",", sizeof(tools_csv) - strlen(tools_csv) - 1);
+            strncat(tools_csv, t->allowed_tools[j], sizeof(tools_csv) - strlen(tools_csv) - 1);
+        }
+
+        char sql[2048];
+        snprintf(sql, sizeof(sql),
+            "INSERT INTO auth_tokens (token, label, permissions, created_at, "
+            "expires_at, revoked, allowed_tools) "
+            "VALUES ('%s', '%s', %u, %lld, %lld, %d, '%s');",
+            t->token, t->label, t->permissions,
+            (long long)t->created_at, (long long)t->expires_at,
+            t->revoked ? 1 : 0, tools_csv);
+        sqlite3_exec(auth->db->handle, sql, NULL, NULL, NULL);
+    }
+
+    SEA_LOG_INFO("AUTH", "Saved %u tokens to DB", auth->count);
+    return SEA_OK;
+}
+
+static int load_token_cb(void* ctx, int ncols, char** vals, char** cols) {
+    SeaAuth* auth = (SeaAuth*)ctx;
+    if (auth->count >= SEA_AUTH_MAX_TOKENS) return 0;
+
+    SeaAuthToken* t = &auth->tokens[auth->count];
+    memset(t, 0, sizeof(*t));
+
+    for (int i = 0; i < ncols; i++) {
+        if (!vals[i]) continue;
+        if (strcmp(cols[i], "token") == 0)
+            strncpy(t->token, vals[i], SEA_TOKEN_LEN);
+        else if (strcmp(cols[i], "label") == 0)
+            strncpy(t->label, vals[i], SEA_TOKEN_LABEL_MAX - 1);
+        else if (strcmp(cols[i], "permissions") == 0)
+            t->permissions = (u32)atoi(vals[i]);
+        else if (strcmp(cols[i], "created_at") == 0)
+            t->created_at = atoll(vals[i]);
+        else if (strcmp(cols[i], "expires_at") == 0)
+            t->expires_at = atoll(vals[i]);
+        else if (strcmp(cols[i], "revoked") == 0)
+            t->revoked = atoi(vals[i]) != 0;
+        else if (strcmp(cols[i], "allowed_tools") == 0 && strlen(vals[i]) > 0) {
+            /* Parse CSV of tool names */
+            char buf[sizeof(t->allowed_tools)];
+            strncpy(buf, vals[i], sizeof(buf) - 1);
+            buf[sizeof(buf) - 1] = '\0';
+            char* tok = strtok(buf, ",");
+            while (tok && t->allowed_tool_count < SEA_AUTH_MAX_ALLOWED_TOOLS) {
+                strncpy(t->allowed_tools[t->allowed_tool_count], tok,
+                        SEA_AUTH_TOOL_NAME_MAX - 1);
+                t->allowed_tool_count++;
+                tok = strtok(NULL, ",");
+            }
+        }
+    }
+    auth->count++;
+    return 0;
+}
+
+SeaError sea_auth_load(SeaAuth* auth) {
+    if (!auth || !auth->db) return SEA_ERR_INVALID_INPUT;
+    auth->count = 0;
+    sqlite3_exec(auth->db->handle,
+        "SELECT * FROM auth_tokens ORDER BY created_at;",
+        load_token_cb, auth, NULL);
+    return SEA_OK;
 }
 
 /* ── Create Token ─────────────────────────────────────────── */
@@ -70,6 +183,9 @@ SeaError sea_auth_create_token(SeaAuth* auth, const char* label,
 
     memcpy(out_token, t->token, SEA_TOKEN_LEN + 1);
     auth->count++;
+
+    /* Auto-save to DB if available */
+    if (auth->db) sea_auth_save(auth);
 
     SEA_LOG_INFO("AUTH", "Token created: %s (perms=0x%02x, expires=%lld)",
                  t->label, permissions, (long long)expires_at);
@@ -112,6 +228,7 @@ SeaError sea_auth_revoke(SeaAuth* auth, const char* token) {
     for (u32 i = 0; i < auth->count; i++) {
         if (strcmp(auth->tokens[i].token, token) == 0) {
             auth->tokens[i].revoked = true;
+            if (auth->db) sea_auth_save(auth);
             SEA_LOG_INFO("AUTH", "Token revoked: %s", auth->tokens[i].label);
             return SEA_OK;
         }

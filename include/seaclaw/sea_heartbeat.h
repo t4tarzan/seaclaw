@@ -23,6 +23,9 @@
 #include "sea_bus.h"
 #include "sea_memory.h"
 
+/* Forward declare */
+typedef struct SeaDb SeaDb;
+
 /* ── Configuration ────────────────────────────────────────── */
 
 #define SEA_HEARTBEAT_FILE       "HEARTBEAT.md"
@@ -45,6 +48,7 @@ typedef struct {
 typedef struct {
     SeaMemory*  memory;         /* Memory system (for workspace path) */
     SeaBus*     bus;            /* Bus for injecting agent prompts    */
+    SeaDb*      db;             /* Optional: if set, heartbeat events are logged */
     u64         interval_sec;   /* Seconds between heartbeat checks   */
     u64         last_check;     /* Epoch time of last check           */
     u32         total_checks;   /* Total heartbeat cycles             */
@@ -54,9 +58,13 @@ typedef struct {
 
 /* ── API ──────────────────────────────────────────────────── */
 
-/* Initialize the heartbeat system. */
+/* Initialize the heartbeat system (in-memory logging only). */
 void sea_heartbeat_init(SeaHeartbeat* hb, SeaMemory* memory,
                          SeaBus* bus, u64 interval_sec);
+
+/* Initialize with SQLite logging. Creates heartbeat_log table. */
+SeaError sea_heartbeat_init_db(SeaHeartbeat* hb, SeaMemory* memory,
+                                SeaBus* bus, u64 interval_sec, SeaDb* db);
 
 /* Parse HEARTBEAT.md and return uncompleted tasks.
  * Returns count of pending tasks found. */

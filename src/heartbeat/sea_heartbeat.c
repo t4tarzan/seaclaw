@@ -6,11 +6,37 @@
  */
 
 #include "seaclaw/sea_heartbeat.h"
+#include "seaclaw/sea_db.h"
 #include "seaclaw/sea_log.h"
 
+#include <sqlite3.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+/* ── Access internal DB handle ───────────────────────────── */
+
+struct SeaDb { sqlite3* handle; };
+
+/* ── DB Logging Helper ──────────────────────────────── */
+
+static void hb_log_event(SeaHeartbeat* hb, const char* event_type,
+                          const char* task_text) {
+    if (!hb || !hb->db) return;
+    sqlite3_stmt* stmt = NULL;
+    const char* sql =
+        "INSERT INTO heartbeat_log (event_type, task_text, check_num, created_at) "
+        "VALUES (?,?,?,?);";
+    if (sqlite3_prepare_v2(hb->db->handle, sql, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, event_type, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 2, task_text ? task_text : "", -1, SQLITE_STATIC);
+        sqlite3_bind_int(stmt, 3, (int)hb->total_checks);
+        sqlite3_bind_int64(stmt, 4, (sqlite3_int64)time(NULL));
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+}
 
 /* ── Helpers ──────────────────────────────────────────────── */
 
@@ -35,8 +61,29 @@ void sea_heartbeat_init(SeaHeartbeat* hb, SeaMemory* memory,
                                          : SEA_HEARTBEAT_DEFAULT_INTERVAL_SEC;
     hb->enabled = true;
     hb->last_check = 0;
+    hb->db = NULL;
     SEA_LOG_INFO("HEARTBEAT", "Initialized (interval: %llus)",
                  (unsigned long long)hb->interval_sec);
+}
+
+SeaError sea_heartbeat_init_db(SeaHeartbeat* hb, SeaMemory* memory,
+                                SeaBus* bus, u64 interval_sec, SeaDb* db) {
+    sea_heartbeat_init(hb, memory, bus, interval_sec);
+    if (!db) return SEA_OK;
+
+    hb->db = db;
+    sqlite3_exec(db->handle,
+        "CREATE TABLE IF NOT EXISTS heartbeat_log ("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  event_type TEXT NOT NULL,"
+        "  task_text TEXT DEFAULT '',"
+        "  check_num INTEGER DEFAULT 0,"
+        "  created_at INTEGER NOT NULL"
+        ");",
+        NULL, NULL, NULL);
+
+    SEA_LOG_INFO("HEARTBEAT", "DB logging enabled");
+    return SEA_OK;
 }
 
 /* ── Parse HEARTBEAT.md ───────────────────────────────────── */
@@ -117,6 +164,7 @@ static u32 inject_pending(SeaHeartbeat* hb) {
                                  "heartbeat", "system", 0,
                                  prompt, (u32)strlen(prompt));
         injected++;
+        hb_log_event(hb, "inject", tasks[i].text);
 
         SEA_LOG_INFO("HEARTBEAT", "Injected task: %.80s%s",
                      tasks[i].text,
@@ -138,6 +186,7 @@ u32 sea_heartbeat_tick(SeaHeartbeat* hb) {
 
     hb->last_check = now;
     hb->total_checks++;
+    hb_log_event(hb, "check", NULL);
 
     u32 injected = inject_pending(hb);
     hb->total_injected += injected;
@@ -211,6 +260,7 @@ SeaError sea_heartbeat_complete(SeaHeartbeat* hb, u32 task_line) {
     fclose(f);
 
     (void)content; /* suppress unused warning */
+    hb_log_event(hb, "complete", NULL);
     SEA_LOG_INFO("HEARTBEAT", "Completed task at line %u", task_line);
     return SEA_OK;
 }
