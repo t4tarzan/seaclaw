@@ -24,6 +24,9 @@
 #include "sea_types.h"
 #include "sea_arena.h"
 
+/* Forward declare */
+typedef struct SeaDb SeaDb;
+
 /* ── Skill Structure ──────────────────────────────────────── */
 
 #define SEA_SKILL_NAME_MAX    64
@@ -50,12 +53,23 @@ typedef struct {
     u32       count;
     char      skills_dir[SEA_SKILL_PATH_MAX]; /* Directory to scan for .md files */
     SeaArena  arena;
+    SeaDb*    db;       /* Optional: if set, installed skills are persisted */
 } SeaSkillRegistry;
 
 /* ── API ──────────────────────────────────────────────────── */
 
 /* Initialize the skill registry. skills_dir is scanned for .md files. */
 SeaError sea_skill_init(SeaSkillRegistry* reg, const char* skills_dir);
+
+/* Initialize with SQLite persistence. Creates skills table.
+ * Loads previously installed skills from DB. */
+SeaError sea_skill_init_db(SeaSkillRegistry* reg, const char* skills_dir, SeaDb* db);
+
+/* Save all skills to DB. Called automatically on install. */
+SeaError sea_skill_save(SeaSkillRegistry* reg);
+
+/* Load skills from DB. Called automatically by sea_skill_init_db. */
+SeaError sea_skill_load_db(SeaSkillRegistry* reg);
 
 /* Destroy the registry. */
 void sea_skill_destroy(SeaSkillRegistry* reg);

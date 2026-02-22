@@ -14,6 +14,9 @@
 #include "sea_types.h"
 #include "sea_arena.h"
 
+/* Forward declare */
+typedef struct SeaDb SeaDb;
+
 /* ── Permission Bitmask ───────────────────────────────────── */
 
 typedef enum {
@@ -56,12 +59,23 @@ typedef struct {
     SeaAuthToken  tokens[SEA_AUTH_MAX_TOKENS];
     u32           count;
     bool          enabled;  /* If false, all requests are allowed (dev mode) */
+    SeaDb*        db;       /* Optional: if set, tokens are persisted to SQLite */
 } SeaAuth;
 
 /* ── API ──────────────────────────────────────────────────── */
 
-/* Initialize the auth manager. */
+/* Initialize the auth manager (in-memory only). */
 void sea_auth_init(SeaAuth* auth, bool enabled);
+
+/* Initialize with SQLite persistence. Creates auth_tokens table.
+ * Loads existing tokens from DB. */
+SeaError sea_auth_init_db(SeaAuth* auth, bool enabled, SeaDb* db);
+
+/* Save all tokens to DB. Called automatically on create/revoke. */
+SeaError sea_auth_save(SeaAuth* auth);
+
+/* Load tokens from DB. Called automatically by sea_auth_init_db. */
+SeaError sea_auth_load(SeaAuth* auth);
 
 /* Generate a new token with given label and permissions.
  * Token string is written to out_token (must be SEA_TOKEN_LEN+1 bytes).
