@@ -69,6 +69,11 @@ extern SeaError tool_spawn(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_message(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_recall(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_agent_zero(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_google_gmail_search(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_google_calendar_today(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_google_drive_search(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_google_contacts_search(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_google_tasks_list(SeaSlice args, SeaArena* arena, SeaSlice* output);
 
 /* ── The Static Registry ──────────────────────────────────── */
 
@@ -131,6 +136,11 @@ static const SeaTool s_registry[] = {
     {56, "message",       "Send message. Args: <channel:chat_id> <text>",           tool_message },
     {57, "recall",        "Remember/recall/forget facts. Args: remember|recall|forget|count", tool_recall },
     {58, "agent_zero",   "Delegate task to Agent Zero (autonomous Python agent in Docker). Args: task description", tool_agent_zero },
+    {59, "google_gmail_search",    "Search Gmail via gogcli. Args: search query",       tool_google_gmail_search },
+    {60, "google_calendar_today",  "Today's calendar events via gogcli. Args: (none)",   tool_google_calendar_today },
+    {61, "google_drive_search",    "Search Google Drive via gogcli. Args: search query",  tool_google_drive_search },
+    {62, "google_contacts_search", "Search Google Contacts via gogcli. Args: query",      tool_google_contacts_search },
+    {63, "google_tasks_list",      "List Google Tasks via gogcli. Args: (none)",          tool_google_tasks_list },
 };
 
 static const u32 s_static_count = sizeof(s_registry) / sizeof(s_registry[0]);

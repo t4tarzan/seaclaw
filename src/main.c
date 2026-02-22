@@ -32,6 +32,10 @@
 #include "sea_workspace.h"
 #include "seaclaw/sea_cli.h"
 #include "seaclaw/sea_ext.h"
+#include "seaclaw/sea_auth.h"
+#include "seaclaw/sea_heartbeat.h"
+#include "seaclaw/sea_graph.h"
+#include "seaclaw/sea_ws.h"
 #include <pthread.h>
 
 #include <stdio.h>
@@ -90,6 +94,13 @@ static bool              s_mesh_mode = false;
 static const char*       s_mesh_role_str = NULL;
 static SeaCli            s_cli;
 static SeaExtRegistry    s_ext_reg;
+static SeaAuth           s_auth_inst;
+SeaAuth*                 s_auth = NULL;
+static SeaHeartbeat      s_heartbeat_inst;
+SeaHeartbeat*            s_heartbeat = NULL;
+static SeaGraph          s_graph_inst;
+SeaGraph*                s_graph = NULL;
+static SeaWsServer       s_ws_inst;
 
 /* ── Signal handler ───────────────────────────────────────── */
 
@@ -1045,6 +1056,22 @@ static int run_gateway(const char* tg_token, i64 tg_chat_id) {
         }
     }
 
+    /* Register WebSocket channel if enabled */
+    {
+        const char* ws_enabled = s_db ? sea_db_config_get(s_db, "ws_enabled", &s_request_arena) : NULL;
+        if (ws_enabled && strcmp(ws_enabled, "true") == 0) {
+            if (sea_ws_init(&s_ws_inst, SEA_WS_DEFAULT_PORT, &s_bus) == SEA_OK) {
+                static SeaChannel s_ws_channel;
+                if (sea_ws_channel_create(&s_ws_channel, &s_ws_inst) == SEA_OK) {
+                    sea_channel_manager_register(&s_chan_mgr, &s_ws_channel);
+                    SEA_LOG_INFO("GATEWAY", "WebSocket channel registered (port %u)",
+                                 SEA_WS_DEFAULT_PORT);
+                }
+            }
+        }
+        sea_arena_reset(&s_request_arena);
+    }
+
     /* Start all channels (each gets its own poll thread) */
     err = sea_channel_manager_start_all(&s_chan_mgr);
     if (err != SEA_OK) {
@@ -1070,9 +1097,11 @@ static int run_gateway(const char* tg_token, i64 tg_chat_id) {
 
     SEA_LOG_INFO("GATEWAY", "Gateway running. %u channel(s). Ctrl+C to stop.", nc);
 
-    /* Wait for shutdown signal */
+    /* Wait for shutdown signal, ticking heartbeat + cron */
     while (s_running) {
         sleep(1);
+        if (s_heartbeat) sea_heartbeat_tick(s_heartbeat);
+        if (s_cron) sea_cron_tick(s_cron);
     }
 
     /* Graceful shutdown */
@@ -1518,10 +1547,13 @@ int main(int argc, char** argv) {
         SEA_LOG_INFO("MEMORY", "Memory system ready");
     }
 
-    /* Initialize skills */
-    if (sea_skill_init(&s_skill_reg, NULL) == SEA_OK) {
+    /* Initialize skills (DB-backed if available) */
+    if (s_db && sea_skill_init_db(&s_skill_reg, NULL, s_db) == SEA_OK) {
         sea_skill_load_all(&s_skill_reg);
-        SEA_LOG_INFO("SKILL", "Skills loaded: %u", sea_skill_count(&s_skill_reg));
+        SEA_LOG_INFO("SKILL", "Skills loaded: %u (DB-persisted)", sea_skill_count(&s_skill_reg));
+    } else if (sea_skill_init(&s_skill_reg, NULL) == SEA_OK) {
+        sea_skill_load_all(&s_skill_reg);
+        SEA_LOG_INFO("SKILL", "Skills loaded: %u (in-memory)", sea_skill_count(&s_skill_reg));
     }
 
     /* Initialize usage tracker */
@@ -1534,6 +1566,33 @@ int main(int argc, char** argv) {
     if (s_db && sea_recall_init(&s_recall_inst, s_db, 800) == SEA_OK) {
         s_recall = &s_recall_inst;
         SEA_LOG_INFO("RECALL", "Memory index ready (%u facts)", sea_recall_count(s_recall));
+    }
+
+    /* Initialize auth (DB-backed if available) */
+    if (s_db && sea_auth_init_db(&s_auth_inst, true, s_db) == SEA_OK) {
+        s_auth = &s_auth_inst;
+        SEA_LOG_INFO("AUTH", "Token auth ready (%u tokens from DB)", s_auth_inst.count);
+    } else {
+        sea_auth_init(&s_auth_inst, false);
+        s_auth = &s_auth_inst;
+    }
+
+    /* Initialize heartbeat (DB-logged if available) */
+    if (s_memory) {
+        if (s_db) {
+            sea_heartbeat_init_db(&s_heartbeat_inst, s_memory, s_bus_ptr, 1800, s_db);
+        } else {
+            sea_heartbeat_init(&s_heartbeat_inst, s_memory, s_bus_ptr, 1800);
+        }
+        s_heartbeat = &s_heartbeat_inst;
+        SEA_LOG_INFO("HEARTBEAT", "Proactive agent ready (interval: 30m)");
+    }
+
+    /* Initialize knowledge graph */
+    if (s_db && sea_graph_init(&s_graph_inst, s_db) == SEA_OK) {
+        s_graph = &s_graph_inst;
+        SEA_LOG_INFO("GRAPH", "Knowledge graph ready (%u entities)",
+                     sea_graph_entity_count(s_graph));
     }
 
     /* Initialize SeaZero (Agent Zero integration — opt-in) */
@@ -1645,6 +1704,7 @@ int main(int argc, char** argv) {
     printf("\n");
     SEA_LOG_INFO("SYSTEM", "Shutting down...");
     sea_proxy_stop(); /* Stop LLM proxy if running (no-op if not started) */
+    if (s_graph) { sea_graph_destroy(s_graph); s_graph = NULL; }
     if (s_mesh) { sea_mesh_destroy(s_mesh); s_mesh = NULL; }
     if (s_usage) { sea_usage_save(s_usage); s_usage = NULL; }
     if (s_recall) { sea_recall_destroy(s_recall); s_recall = NULL; }
