@@ -1,46 +1,12 @@
-
-!config/config.example.json
-# Build artifacts
-# Core dumps (root only, not src/core/)
-# Database
-# Environment secrets
-# IDE
-# Logs
-# OS
-# Secrets
-# Working files (not for public repo)
+# ── Build artifacts ────────────────────────────────────────────
 *.a
-*.db
-*.db-shm
-*.db-wal
 *.dylib
-*.key
-*.log
 *.o
-*.pem
 *.so
-*.swo
-*.swp
-*~
-.DS_Store
-.env
-.idea/
-.pgpass
-.vscode/
-/Kimi_Agent_Agent Zero & SeaClaw Fusion/
-/Kimi_Agent_OpenClaw C Rebuild Project/
 /build/
-/core
-/core.*
 /dist/
-/openclaw_analysis/
-/working/
-Thumbs.db
-claude.md
-config.json
-docs/PERFORMANCE_PHILOSOPHY.md
-docs/PROJECT_STRUCTURE.md
-docs/TERMINAL_UX_REFERENCE.md
+
+# ── Binaries (compiled from source) ──────────────────────────
 sea_claw
 test_arena
 test_bus
@@ -49,7 +15,55 @@ test_cron
 test_db
 test_json
 test_memory
+test_pii
+test_recall
+test_seazero
 test_session
 test_shield
 test_skill
-test_pii
+
+# ── Database ──────────────────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+
+# ── Environment & Secrets ─────────────────────────────────────
+# Only .env.example files are tracked — NEVER real .env files
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.pgpass
+config.json
+!config/config.example.json
+
+# ── Core dumps ────────────────────────────────────────────────
+/core
+/core.*
+
+# ── Logs ──────────────────────────────────────────────────────
+*.log
+
+# ── IDE & Editor ──────────────────────────────────────────────
+*.swo
+*.swp
+*~
+.idea/
+.vscode/
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Working directories (not for public repo) ─────────────────
+/Kimi_Agent_Agent Zero & SeaClaw Fusion/
+/Kimi_Agent_OpenClaw C Rebuild Project/
+/openclaw_analysis/
+/working/
+
+# ── Scratch / private docs ────────────────────────────────────
+claude.md
+docs/PERFORMANCE_PHILOSOPHY.md
+docs/PROJECT_STRUCTURE.md
+docs/TERMINAL_UX_REFERENCE.md

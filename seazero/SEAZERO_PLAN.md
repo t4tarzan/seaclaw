@@ -162,7 +162,7 @@ CREATE INDEX IF NOT EXISTS idx_sz_agents_status ON seazero_agents(status);
 - [x] `seazero/bridge/sea_zero.h` — C bridge API
 - [x] `seazero/bridge/sea_zero.c` — implementation using `sea_http`
 - [x] `seazero/docker-compose.yml` — lean Agent Zero container
-- [x] `seazero/config/agent-zero.env` — environment template
+- [x] `seazero/config/agent-zero.env.example` — environment template
 - [x] `seazero/scripts/setup.sh` — first-time setup wizard
 - [x] `seazero/scripts/spawn-agent.sh` — agent lifecycle management
 - [x] `Makefile` — added `seazero-*` targets
@@ -316,7 +316,7 @@ User provides ONE API key during onboarding
 - `seazero/bridge/sea_zero.h`
 - `seazero/bridge/sea_zero.c`
 - `seazero/docker-compose.yml`
-- `seazero/config/agent-zero.env`
+- `seazero/config/agent-zero.env.example`
 - `seazero/scripts/setup.sh`
 - `seazero/scripts/spawn-agent.sh`
 - `seazero/SEAZERO_PLAN.md` (this file)

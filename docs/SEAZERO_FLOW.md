@@ -200,7 +200,7 @@ seazero/
 │   └── sea_workspace.h/c     # Shared workspace manager
 ├── config/
 │   ├── seccomp.json           # Syscall whitelist for container
-│   └── agent-zero.env         # Environment template
+│   └── agent-zero.env.example  # Environment template
 ├── scripts/
 │   ├── setup.sh               # Docker image setup
 │   └── spawn-agent.sh         # Agent lifecycle management
