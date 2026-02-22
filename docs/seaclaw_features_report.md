@@ -542,8 +542,7 @@
 - **Repository:** https://github.com/t4tarzan/seaclaw
 - **Install Script:** https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh
 - **License:** MIT
-- **Company:** One Convergence (25+ years security & networking)
-- **Enterprise Contact:** enterprise@oneconvergence.com
+- **Community:** GitHub Issues & Discussions
 
 ---
 

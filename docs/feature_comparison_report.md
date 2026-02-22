@@ -471,7 +471,7 @@ This report provides a comprehensive comparison between **SeaClaw** (C11 soverei
 | **Discord** | ❌ | ✅ https://discord.gg/MnCvHqpUGB |
 | **GitHub Discussions** | ⚠️ Issues only | ✅ Active |
 | **WeChat/Feishu** | ❌ | ✅ Chinese community |
-| **Enterprise Support** | ✅ enterprise@oneconvergence.com | ❌ |
+| **Enterprise Support** | ✅ GitHub Issues | ❌ |
 
 **Winner: nanobot** - More active community channels; SeaClaw offers enterprise support.
 
@@ -546,7 +546,7 @@ This report provides a comprehensive comparison between **SeaClaw** (C11 soverei
 7. **< 1ms Startup** - Near-instant initialization
 8. **PII Protection** - Automatic sensitive data redaction
 9. **A2A Protocol** - Agent-to-agent communication
-10. **Enterprise Support** - Commercial backing (One Convergence)
+10. **Enterprise Support** - Community-backed via GitHub
 
 ### nanobot Unique Strengths
 
