@@ -181,6 +181,16 @@ static void cmd_help(void) {
     printf("    /graph add <t> <n> Add entity (type: person/project/...)\n");
     printf("    /graph link <f><r><t> Link two entities\n");
     printf("    /graph search <q>  Search entities by name\n");
+    printf("    /cron              List cron jobs\n");
+    printf("    /cron add <n><s><c> Add cron job (name schedule cmd)\n");
+    printf("    /cron pause <id>   Pause a cron job\n");
+    printf("    /cron resume <id>  Resume a cron job\n");
+    printf("    /cron remove <id>  Remove a cron job\n");
+    printf("    /recall            Memory vault stats\n");
+    printf("    /recall search <q> Search facts by query\n");
+    printf("    /recall store <c><t> Store fact (category text)\n");
+    printf("    /recall forget <id> Forget a fact\n");
+    printf("    /mesh              Mesh network status\n");
     printf("\n  \033[1mSeaZero (Agent Zero):\033[0m\n");
     printf("    /agents            List Agent Zero instances\n");
     printf("    /delegate <task>   Delegate task to Agent Zero\n");
@@ -496,6 +506,178 @@ static void cmd_graph(const char* input) {
     sea_arena_reset(&s_request_arena);
 }
 
+/* ── TUI: /cron ──────────────────────────────────────────── */
+
+static const char* cron_state_str(SeaCronJobState st) {
+    switch (st) {
+        case SEA_CRON_ACTIVE:    return "\033[32mactive\033[0m";
+        case SEA_CRON_PAUSED:    return "\033[33mpaused\033[0m";
+        case SEA_CRON_COMPLETED: return "\033[36mdone\033[0m";
+        case SEA_CRON_FAILED:    return "\033[31mfailed\033[0m";
+    }
+    return "?";
+}
+
+static void cmd_cron(const char* input) {
+    if (!s_cron) {
+        printf("  Cron scheduler not initialized.\n");
+        return;
+    }
+
+    /* /cron add <name> <schedule> <command> */
+    if (strncmp(input, "/cron add ", 10) == 0) {
+        const char* p = input + 10;
+        while (*p == ' ') p++;
+        char name[SEA_CRON_NAME_MAX], sched[SEA_CRON_EXPR_MAX];
+        char cmd_buf[SEA_CRON_CMD_MAX] = "";
+        if (sscanf(p, "%63s %63s %511[^\n]", name, sched, cmd_buf) < 2) {
+            printf("  Usage: /cron add <name> <schedule> <command>\n");
+            printf("  Schedule: '@every 5m', '@once 30s', '0 9 * * *'\n");
+            return;
+        }
+        i32 id = sea_cron_add(s_cron, name, SEA_CRON_SHELL, sched, cmd_buf, NULL);
+        if (id >= 0) {
+            printf("  \033[32m✓\033[0m Job #%d '%s' added (schedule: %s)\n", id, name, sched);
+        } else {
+            printf("  \033[31m✗\033[0m Failed to add job\n");
+        }
+        return;
+    }
+
+    /* /cron pause <id> */
+    if (strncmp(input, "/cron pause ", 12) == 0) {
+        i32 id = atoi(input + 12);
+        SeaError err = sea_cron_pause(s_cron, id);
+        if (err == SEA_OK) printf("  \033[32m✓\033[0m Job #%d paused\n", id);
+        else printf("  \033[31m✗\033[0m %s\n", sea_error_str(err));
+        return;
+    }
+
+    /* /cron resume <id> */
+    if (strncmp(input, "/cron resume ", 13) == 0) {
+        i32 id = atoi(input + 13);
+        SeaError err = sea_cron_resume(s_cron, id);
+        if (err == SEA_OK) printf("  \033[32m✓\033[0m Job #%d resumed\n", id);
+        else printf("  \033[31m✗\033[0m %s\n", sea_error_str(err));
+        return;
+    }
+
+    /* /cron remove <id> */
+    if (strncmp(input, "/cron remove ", 13) == 0) {
+        i32 id = atoi(input + 13);
+        SeaError err = sea_cron_remove(s_cron, id);
+        if (err == SEA_OK) printf("  \033[32m✓\033[0m Job #%d removed\n", id);
+        else printf("  \033[31m✗\033[0m %s\n", sea_error_str(err));
+        return;
+    }
+
+    /* /cron — list jobs */
+    u32 count = sea_cron_count(s_cron);
+    printf("\n  \033[1mCron Jobs (%u):\033[0m\n", count);
+    if (count == 0) {
+        printf("    (none — add with /cron add <name> <schedule> <command>)\n");
+    }
+    SeaCronJob* jobs[SEA_MAX_CRON_JOBS];
+    u32 listed = sea_cron_list(s_cron, jobs, SEA_MAX_CRON_JOBS);
+    for (u32 i = 0; i < listed; i++) {
+        SeaCronJob* j = jobs[i];
+        printf("    #%-3d %-16s  %s  sched: %-16s  runs: %u  cmd: %.40s%s\n",
+               j->id, j->name, cron_state_str(j->state),
+               j->schedule, j->run_count,
+               j->command, strlen(j->command) > 40 ? "..." : "");
+    }
+    printf("\n");
+}
+
+/* ── TUI: /recall ────────────────────────────────────────── */
+
+static void cmd_recall(const char* input) {
+    if (!s_recall) {
+        printf("  Recall engine not initialized (needs database).\n");
+        return;
+    }
+
+    /* /recall store <category> <content> */
+    if (strncmp(input, "/recall store ", 14) == 0) {
+        const char* p = input + 14;
+        while (*p == ' ') p++;
+        char category[64];
+        char content[1024] = "";
+        if (sscanf(p, "%63s %1023[^\n]", category, content) < 2) {
+            printf("  Usage: /recall store <category> <content>\n");
+            printf("  Categories: user, preference, fact, rule, context, identity\n");
+            return;
+        }
+        SeaError err = sea_recall_store(s_recall, category, content, NULL, 5);
+        if (err == SEA_OK) {
+            printf("  \033[32m✓\033[0m Stored fact in '%s'\n", category);
+        } else {
+            printf("  \033[31m✗\033[0m %s\n", sea_error_str(err));
+        }
+        return;
+    }
+
+    /* /recall forget <id> */
+    if (strncmp(input, "/recall forget ", 15) == 0) {
+        i32 id = atoi(input + 15);
+        SeaError err = sea_recall_forget(s_recall, id);
+        if (err == SEA_OK) printf("  \033[32m✓\033[0m Fact #%d forgotten\n", id);
+        else printf("  \033[31m✗\033[0m %s\n", sea_error_str(err));
+        return;
+    }
+
+    /* /recall search <query> */
+    if (strncmp(input, "/recall search ", 15) == 0) {
+        const char* query = input + 15;
+        while (*query == ' ') query++;
+        SeaRecallFact facts[16];
+        i32 count = sea_recall_query(s_recall, query, facts, 16, &s_request_arena);
+        printf("\n  \033[1mRecall: \"%s\" (%d results):\033[0m\n", query, count);
+        for (i32 i = 0; i < count; i++) {
+            printf("    #%-4d [%-10s] score:%.2f  %s\n",
+                   facts[i].id,
+                   facts[i].category ? facts[i].category : "?",
+                   facts[i].score,
+                   facts[i].content ? facts[i].content : "");
+        }
+        if (count == 0) printf("    (no matches)\n");
+        printf("\n");
+        sea_arena_reset(&s_request_arena);
+        return;
+    }
+
+    /* /recall — show stats */
+    u32 total = sea_recall_count(s_recall);
+    printf("\n  \033[1mRecall Memory (The Vault):\033[0m\n");
+    printf("    Total facts:  %u\n", total);
+    printf("    Token budget: %u\n", s_recall->max_context_tokens);
+
+    static const char* categories[] = {
+        "user", "preference", "fact", "rule", "context", "identity"
+    };
+    for (u32 i = 0; i < 6; i++) {
+        u32 c = sea_recall_count_category(s_recall, categories[i]);
+        if (c > 0) printf("      %-12s %u\n", categories[i], c);
+    }
+    printf("\n  Commands:\n");
+    printf("    /recall search <query>\n");
+    printf("    /recall store <category> <content>\n");
+    printf("    /recall forget <id>\n");
+    printf("\n");
+}
+
+/* ── TUI: /mesh ──────────────────────────────────────────── */
+
+static void cmd_mesh(void) {
+    if (!s_mesh) {
+        printf("  Mesh not enabled. Use --mode captain|crew\n");
+        return;
+    }
+    const char* status = sea_mesh_status(s_mesh, &s_request_arena);
+    printf("\n  %s\n", status);
+    sea_arena_reset(&s_request_arena);
+}
+
 static void dispatch_command(const char* input) {
     if (strcmp(input, "/help") == 0 || strcmp(input, "/?") == 0) {
         cmd_help();
@@ -641,6 +823,12 @@ static void dispatch_command(const char* input) {
         cmd_heartbeat();
     } else if (strcmp(input, "/graph") == 0 || strncmp(input, "/graph ", 7) == 0) {
         cmd_graph(input);
+    } else if (strcmp(input, "/cron") == 0 || strncmp(input, "/cron ", 6) == 0) {
+        cmd_cron(input);
+    } else if (strcmp(input, "/recall") == 0 || strncmp(input, "/recall ", 8) == 0) {
+        cmd_recall(input);
+    } else if (strcmp(input, "/mesh") == 0) {
+        cmd_mesh();
     } else if (strcmp(input, "/clear") == 0) {
         printf("\033[2J\033[H");
         printf("%s\n", BANNER);
