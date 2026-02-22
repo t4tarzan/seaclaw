@@ -70,3 +70,4 @@ docs/TERMINAL_UX_REFERENCE.md
 test_ext
 test_auth
 test_heartbeat
+test_graph
