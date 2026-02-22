@@ -133,31 +133,85 @@ static const SeaTool s_registry[] = {
     {58, "agent_zero",   "Delegate task to Agent Zero (autonomous Python agent in Docker). Args: task description", tool_agent_zero },
 };
 
-static const u32 s_registry_count = sizeof(s_registry) / sizeof(s_registry[0]);
+static const u32 s_static_count = sizeof(s_registry) / sizeof(s_registry[0]);
 
-/* ── API ──────────────────────────────────────────────────── */
+/* ── Hash Table (DJB2) for O(1) name lookup ───────────── */
 
-void sea_tools_init(void) {
-    SEA_LOG_INFO("HANDS", "Tool registry loaded: %u tools", s_registry_count);
+static const SeaTool* s_hash_table[SEA_TOOL_HASH_SIZE];
+
+static u32 djb2_hash(const char* str) {
+    u32 hash = 5381;
+    int c;
+    while ((c = (unsigned char)*str++)) {
+        hash = ((hash << 5) + hash) + (u32)c;
+    }
+    return hash & (SEA_TOOL_HASH_SIZE - 1);
 }
 
-u32 sea_tools_count(void) {
-    return s_registry_count;
+static void hash_insert(const SeaTool* tool) {
+    u32 idx = djb2_hash(tool->name);
+    /* Linear probing */
+    for (u32 i = 0; i < SEA_TOOL_HASH_SIZE; i++) {
+        u32 slot = (idx + i) & (SEA_TOOL_HASH_SIZE - 1);
+        if (!s_hash_table[slot]) {
+            s_hash_table[slot] = tool;
+            return;
+        }
+    }
 }
 
-const SeaTool* sea_tool_by_name(const char* name) {
-    for (u32 i = 0; i < s_registry_count; i++) {
-        if (strcmp(s_registry[i].name, name) == 0) {
-            return &s_registry[i];
+static const SeaTool* hash_lookup(const char* name) {
+    u32 idx = djb2_hash(name);
+    for (u32 i = 0; i < SEA_TOOL_HASH_SIZE; i++) {
+        u32 slot = (idx + i) & (SEA_TOOL_HASH_SIZE - 1);
+        if (!s_hash_table[slot]) return NULL;
+        if (strcmp(s_hash_table[slot]->name, name) == 0) {
+            return s_hash_table[slot];
         }
     }
     return NULL;
 }
 
+/* ── Dynamic Tool Storage ─────────────────────────────── */
+
+static SeaTool  s_dynamic[SEA_TOOL_DYNAMIC_MAX];
+static char     s_dyn_names[SEA_TOOL_DYNAMIC_MAX][SEA_MAX_TOOL_NAME];
+static u32      s_dynamic_count = 0;
+
+/* ── API ────────────────────────────────────────────────────── */
+
+void sea_tools_init(void) {
+    /* Build hash table from static registry */
+    memset(s_hash_table, 0, sizeof(s_hash_table));
+    for (u32 i = 0; i < s_static_count; i++) {
+        hash_insert(&s_registry[i]);
+    }
+    SEA_LOG_INFO("HANDS", "Tool registry loaded: %u static tools (hash table built)",
+                 s_static_count);
+}
+
+u32 sea_tools_count(void) {
+    return s_static_count + s_dynamic_count;
+}
+
+u32 sea_tools_dynamic_count(void) {
+    return s_dynamic_count;
+}
+
+const SeaTool* sea_tool_by_name(const char* name) {
+    if (!name) return NULL;
+    return hash_lookup(name);
+}
+
 const SeaTool* sea_tool_by_id(u32 id) {
-    for (u32 i = 0; i < s_registry_count; i++) {
-        if (s_registry[i].id == id) {
-            return &s_registry[i];
+    /* Static tools: id 1..N */
+    if (id >= 1 && id <= s_static_count) {
+        return &s_registry[id - 1];
+    }
+    /* Dynamic tools: id starts after static */
+    for (u32 i = 0; i < s_dynamic_count; i++) {
+        if (s_dynamic[i].id == id) {
+            return &s_dynamic[i];
         }
     }
     return NULL;
@@ -179,10 +233,74 @@ SeaError sea_tool_exec(const char* name, SeaSlice args, SeaArena* arena, SeaSlic
 void sea_tools_list(void) {
     printf("  %-4s %-20s %s\n", "ID", "Name", "Description");
     printf("  %-4s %-20s %s\n", "──", "────────────────────", "───────────────────────────");
-    for (u32 i = 0; i < s_registry_count; i++) {
+    for (u32 i = 0; i < s_static_count; i++) {
         printf("  %-4u %-20s %s\n",
                s_registry[i].id,
                s_registry[i].name,
                s_registry[i].description);
     }
+    for (u32 i = 0; i < s_dynamic_count; i++) {
+        printf("  %-4u %-20s %s [dynamic]\n",
+               s_dynamic[i].id,
+               s_dynamic[i].name,
+               s_dynamic[i].description);
+    }
+}
+
+SeaError sea_tool_register(const char* name, const char* description,
+                            SeaToolFunc func) {
+    if (!name || !func) return SEA_ERR_INVALID_INPUT;
+    if (s_dynamic_count >= SEA_TOOL_DYNAMIC_MAX) return SEA_ERR_FULL;
+
+    /* Check for duplicate */
+    if (hash_lookup(name)) {
+        SEA_LOG_WARN("HANDS", "Tool already registered: %s", name);
+        return SEA_ERR_ALREADY_EXISTS;
+    }
+
+    /* Store name in persistent buffer */
+    strncpy(s_dyn_names[s_dynamic_count], name, SEA_MAX_TOOL_NAME - 1);
+    s_dyn_names[s_dynamic_count][SEA_MAX_TOOL_NAME - 1] = '\0';
+
+    SeaTool* t = &s_dynamic[s_dynamic_count];
+    t->id          = s_static_count + s_dynamic_count + 1;
+    t->name        = s_dyn_names[s_dynamic_count];
+    t->description = description;
+    t->func        = func;
+
+    hash_insert(t);
+    s_dynamic_count++;
+
+    SEA_LOG_INFO("HANDS", "Dynamic tool registered: #%u %s", t->id, name);
+    return SEA_OK;
+}
+
+SeaError sea_tool_unregister(const char* name) {
+    if (!name) return SEA_ERR_INVALID_INPUT;
+
+    for (u32 i = 0; i < s_dynamic_count; i++) {
+        if (strcmp(s_dynamic[i].name, name) == 0) {
+            /* Swap-remove: move last element into this slot (skip if same) */
+            u32 last = s_dynamic_count - 1;
+            if (i != last) {
+                s_dynamic[i] = s_dynamic[last];
+                memcpy(s_dyn_names[i], s_dyn_names[last], SEA_MAX_TOOL_NAME);
+                s_dynamic[i].name = s_dyn_names[i];
+            }
+            s_dynamic_count--;
+
+            /* Rebuild hash table */
+            memset(s_hash_table, 0, sizeof(s_hash_table));
+            for (u32 j = 0; j < s_static_count; j++) {
+                hash_insert(&s_registry[j]);
+            }
+            for (u32 j = 0; j < s_dynamic_count; j++) {
+                hash_insert(&s_dynamic[j]);
+            }
+
+            SEA_LOG_INFO("HANDS", "Dynamic tool unregistered: %s", name);
+            return SEA_OK;
+        }
+    }
+    return SEA_ERR_NOT_FOUND;
 }

@@ -105,6 +105,8 @@ typedef enum {
     SEA_ERR_NOT_FOUND,
     SEA_ERR_ALREADY_EXISTS,
     SEA_ERR_NOT_IMPLEMENTED,
+    SEA_ERR_FULL,
+    SEA_ERR_PARTIAL,
 
     SEA_ERR_COUNT
 } SeaError;
@@ -134,6 +136,8 @@ static inline const char* sea_error_str(SeaError err) {
         case SEA_ERR_NOT_FOUND:       return "Not found";
         case SEA_ERR_ALREADY_EXISTS:  return "Already exists";
         case SEA_ERR_NOT_IMPLEMENTED: return "Not implemented";
+        case SEA_ERR_FULL:            return "Registry full";
+        case SEA_ERR_PARTIAL:         return "Partial success";
         default:                      return "Unknown error";
     }
 }

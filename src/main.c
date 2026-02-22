@@ -30,6 +30,8 @@
 #include "sea_zero.h"
 #include "sea_proxy.h"
 #include "sea_workspace.h"
+#include "seaclaw/sea_cli.h"
+#include "seaclaw/sea_ext.h"
 #include <pthread.h>
 
 #include <stdio.h>
@@ -86,6 +88,8 @@ static SeaMesh           s_mesh_inst;
 SeaMesh*                 s_mesh = NULL;
 static bool              s_mesh_mode = false;
 static const char*       s_mesh_role_str = NULL;
+static SeaCli            s_cli;
+static SeaExtRegistry    s_ext_reg;
 
 /* ── Signal handler ───────────────────────────────────────── */
 
@@ -1090,7 +1094,18 @@ static int run_gateway(const char* tg_token, i64 tg_chat_id) {
 /* ── Main ─────────────────────────────────────────────────── */
 
 int main(int argc, char** argv) {
-    /* Parse CLI args */
+    /* Initialize CLI subcommand dispatch and extension registry */
+    sea_cli_init(&s_cli);
+    sea_ext_init(&s_ext_reg);
+
+    /* Try subcommand dispatch first (e.g. `sea_claw doctor`) */
+    if (argc >= 2 && argv[1][0] != '-') {
+        int ret = sea_cli_dispatch(&s_cli, argc, argv);
+        if (ret >= 0) return ret;
+        /* -1 means not a subcommand — fall through to legacy parsing */
+    }
+
+    /* Parse CLI args (legacy --flag mode) */
     const char* tg_token = NULL;
     i64 tg_chat_id = 0;
 
