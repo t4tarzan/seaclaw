@@ -313,6 +313,22 @@ static void execute_job(SeaCronScheduler* sched, SeaCronJob* job) {
             }
             break;
         }
+        case SEA_CRON_AGENT: {
+            /* Inject prompt into agent loop via bus */
+            if (sched->bus) {
+                char prompt[SEA_CRON_CMD_MAX + 64];
+                snprintf(prompt, sizeof(prompt),
+                         "[Cron:%.63s] %.500s", job->name, job->command);
+                sea_bus_publish_inbound(sched->bus, SEA_MSG_SYSTEM,
+                                         "cron-agent", "cron", 0,
+                                         prompt, (u32)strlen(prompt));
+                SEA_LOG_INFO("CRON", "Agent prompt injected: %.80s", job->command);
+            } else {
+                success = false;
+                output = "no bus";
+            }
+            break;
+        }
     }
 
     u64 duration = now_epoch() - start;
