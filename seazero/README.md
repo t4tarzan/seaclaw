@@ -71,7 +71,7 @@ seazero/
 │   ├── spawn-agent.sh      # Spawn/manage Agent Zero containers
 │   └── setup.sh            # First-time SeaZero setup
 └── config/
-    └── agent-zero.env      # Agent Zero environment template
+    └── agent-zero.env.example  # Agent Zero environment template
 ```
 
 ## How It Works
