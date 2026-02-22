@@ -148,3 +148,63 @@ u32 sea_auth_active_count(const SeaAuth* auth) {
     }
     return n;
 }
+
+/* ── Tool Allowlist ───────────────────────────────────────── */
+
+SeaError sea_auth_allow_tool(SeaAuth* auth, const char* token, const char* tool_name) {
+    if (!auth || !token || !tool_name) return SEA_ERR_INVALID_INPUT;
+
+    for (u32 i = 0; i < auth->count; i++) {
+        if (strcmp(auth->tokens[i].token, token) == 0) {
+            SeaAuthToken* t = &auth->tokens[i];
+            if (t->allowed_tool_count >= SEA_AUTH_MAX_ALLOWED_TOOLS) {
+                return SEA_ERR_FULL;
+            }
+            /* Check for duplicate */
+            for (u32 j = 0; j < t->allowed_tool_count; j++) {
+                if (strcmp(t->allowed_tools[j], tool_name) == 0) {
+                    return SEA_ERR_ALREADY_EXISTS;
+                }
+            }
+            strncpy(t->allowed_tools[t->allowed_tool_count], tool_name,
+                    SEA_AUTH_TOOL_NAME_MAX - 1);
+            t->allowed_tools[t->allowed_tool_count][SEA_AUTH_TOOL_NAME_MAX - 1] = '\0';
+            t->allowed_tool_count++;
+            SEA_LOG_INFO("AUTH", "Token '%s': allowed tool '%s' (%u/%u)",
+                         t->label, tool_name, t->allowed_tool_count,
+                         (u32)SEA_AUTH_MAX_ALLOWED_TOOLS);
+            return SEA_OK;
+        }
+    }
+    return SEA_ERR_NOT_FOUND;
+}
+
+bool sea_auth_can_call_tool(const SeaAuth* auth, const char* token,
+                             const char* tool_name) {
+    if (!auth || !token || !tool_name) return false;
+
+    /* If auth disabled, allow everything */
+    if (!auth->enabled) return true;
+
+    /* Find the token */
+    i64 now = (i64)time(NULL);
+    for (u32 i = 0; i < auth->count; i++) {
+        const SeaAuthToken* t = &auth->tokens[i];
+        if (t->revoked) continue;
+        if (t->expires_at > 0 && t->expires_at < now) continue;
+        if (strcmp(t->token, token) != 0) continue;
+
+        /* Must have TOOLS permission */
+        if (!(t->permissions & SEA_PERM_TOOLS)) return false;
+
+        /* Empty allowlist = all tools allowed */
+        if (t->allowed_tool_count == 0) return true;
+
+        /* Check allowlist */
+        for (u32 j = 0; j < t->allowed_tool_count; j++) {
+            if (strcmp(t->allowed_tools[j], tool_name) == 0) return true;
+        }
+        return false; /* Tool not in allowlist */
+    }
+    return false; /* Token not found */
+}

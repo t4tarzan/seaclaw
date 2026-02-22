@@ -31,9 +31,11 @@ typedef enum {
 
 /* ── Token Structure ──────────────────────────────────────── */
 
-#define SEA_TOKEN_LEN       64
-#define SEA_TOKEN_LABEL_MAX 64
-#define SEA_AUTH_MAX_TOKENS  32
+#define SEA_TOKEN_LEN           64
+#define SEA_TOKEN_LABEL_MAX     64
+#define SEA_AUTH_MAX_TOKENS     32
+#define SEA_AUTH_MAX_ALLOWED_TOOLS 16
+#define SEA_AUTH_TOOL_NAME_MAX  64
 
 typedef struct {
     char    token[SEA_TOKEN_LEN + 1];
@@ -42,6 +44,10 @@ typedef struct {
     i64     created_at;     /* Unix timestamp */
     i64     expires_at;     /* 0 = never expires */
     bool    revoked;
+    /* Tool allowlist: if allowed_tool_count > 0, only these tools can be called.
+     * Empty list = all tools allowed (subject to SEA_PERM_TOOLS). */
+    char    allowed_tools[SEA_AUTH_MAX_ALLOWED_TOOLS][SEA_AUTH_TOOL_NAME_MAX];
+    u32     allowed_tool_count;
 } SeaAuthToken;
 
 /* ── Auth Manager ─────────────────────────────────────────── */
@@ -79,5 +85,16 @@ u32 sea_auth_list(const SeaAuth* auth, SeaAuthToken* out, u32 max);
 
 /* Get count of active (non-revoked) tokens. */
 u32 sea_auth_active_count(const SeaAuth* auth);
+
+/* ── Tool Allowlist ───────────────────────────────────────── */
+
+/* Add a tool to a token's allowlist. */
+SeaError sea_auth_allow_tool(SeaAuth* auth, const char* token, const char* tool_name);
+
+/* Check if a token is allowed to call a specific tool.
+ * Returns true if: (1) token has SEA_PERM_TOOLS, AND
+ *                  (2) allowlist is empty OR tool is in allowlist. */
+bool sea_auth_can_call_tool(const SeaAuth* auth, const char* token,
+                             const char* tool_name);
 
 #endif /* SEA_AUTH_H */

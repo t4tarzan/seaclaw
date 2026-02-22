@@ -28,6 +28,7 @@ typedef enum {
     SEA_CRON_SHELL = 0,     /* Execute a shell command          */
     SEA_CRON_TOOL,          /* Call a registered tool            */
     SEA_CRON_BUS_MSG,       /* Publish a message to the bus     */
+    SEA_CRON_AGENT,         /* Inject prompt into agent loop    */
 } SeaCronJobType;
 
 typedef enum {

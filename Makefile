@@ -127,6 +127,9 @@ EXT_SRC := \
 AUTH_SRC := \
 	src/auth/sea_auth.c
 
+HEARTBEAT_SRC := \
+	src/heartbeat/sea_heartbeat.c
+
 HANDS_SRC := \
 	src/hands/sea_tools.c \
 	src/hands/impl/tool_echo.c \
@@ -194,7 +197,7 @@ SEAZERO_SRC := \
 
 MAIN_SRC := src/main.c
 
-ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(A2A_SRC) $(BUS_SRC) $(CHANNEL_SRC) $(SESSION_SRC) $(MEMORY_SRC) $(CRON_SRC) $(SKILL_SRC) $(USAGE_SRC) $(RECALL_SRC) $(PII_SRC) $(MESH_SRC) $(CLI_SRC) $(EXT_SRC) $(AUTH_SRC) $(HANDS_SRC) $(SEAZERO_SRC) $(MAIN_SRC)
+ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(A2A_SRC) $(BUS_SRC) $(CHANNEL_SRC) $(SESSION_SRC) $(MEMORY_SRC) $(CRON_SRC) $(SKILL_SRC) $(USAGE_SRC) $(RECALL_SRC) $(PII_SRC) $(MESH_SRC) $(CLI_SRC) $(EXT_SRC) $(AUTH_SRC) $(HEARTBEAT_SRC) $(HANDS_SRC) $(SEAZERO_SRC) $(MAIN_SRC)
 ALL_OBJ := $(ALL_SRC:.c=.o)
 
 TEST_ARENA_SRC := tests/test_arena.c
@@ -245,6 +248,9 @@ TEST_EXT_OBJ := $(TEST_EXT_SRC:.c=.o)
 TEST_AUTH_SRC := tests/test_auth.c
 TEST_AUTH_OBJ := $(TEST_AUTH_SRC:.c=.o)
 
+TEST_HEARTBEAT_SRC := tests/test_heartbeat.c
+TEST_HEARTBEAT_OBJ := $(TEST_HEARTBEAT_SRC:.c=.o)
+
 # ── Output ────────────────────────────────────────────────────
 
 BIN     := sea_claw
@@ -265,6 +271,7 @@ TESTBIN_BENCH   := test_bench
 TESTBIN_SEAZERO := test_seazero
 TESTBIN_EXT     := test_ext
 TESTBIN_AUTH    := test_auth
+TESTBIN_HEARTBEAT := test_heartbeat
 
 # ── Targets ───────────────────────────────────────────────────
 
@@ -323,7 +330,7 @@ test-docker: clean $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_
 	./$(TESTBIN_PII)
 	@echo ""
 
-test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII) $(TESTBIN_SEAZERO) $(TESTBIN_EXT) $(TESTBIN_AUTH)
+test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII) $(TESTBIN_SEAZERO) $(TESTBIN_EXT) $(TESTBIN_AUTH) $(TESTBIN_HEARTBEAT)
 	@echo ""
 	@echo "  Running tests..."
 	@echo "  ────────────────"
@@ -342,6 +349,7 @@ test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN
 	./$(TESTBIN_SEAZERO)
 	./$(TESTBIN_EXT)
 	./$(TESTBIN_AUTH)
+	./$(TESTBIN_HEARTBEAT)
 	@echo ""
 
 $(TESTBIN_ARENA): $(TEST_ARENA_OBJ) src/core/sea_arena.o src/core/sea_log.o
@@ -395,10 +403,13 @@ $(TESTBIN_EXT): $(TEST_EXT_OBJ) src/ext/sea_ext.o src/cli/sea_cli.o $(HANDS_OBJ)
 $(TESTBIN_AUTH): $(TEST_AUTH_OBJ) src/auth/sea_auth.o src/skills/sea_skill.o src/core/sea_arena.o src/core/sea_log.o src/senses/sea_http.o src/shield/sea_shield.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
+$(TESTBIN_HEARTBEAT): $(TEST_HEARTBEAT_OBJ) src/heartbeat/sea_heartbeat.o src/auth/sea_auth.o src/memory/sea_memory.o src/bus/sea_bus.o src/core/sea_arena.o src/core/sea_log.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
+
 # ── Clean ─────────────────────────────────────────────────────
 
 clean:
-	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII) $(TESTBIN_BENCH) $(TESTBIN_SEAZERO) $(TESTBIN_EXT) $(TESTBIN_AUTH)
+	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII) $(TESTBIN_BENCH) $(TESTBIN_SEAZERO) $(TESTBIN_EXT) $(TESTBIN_AUTH) $(TESTBIN_HEARTBEAT)
 	find src tests seazero -name '*.o' -delete 2>/dev/null || true
 	@echo "  Cleaned."
 
