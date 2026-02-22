@@ -7,12 +7,16 @@
 
 #include "seaclaw/sea_skill.h"
 #include "seaclaw/sea_log.h"
+#include "seaclaw/sea_http.h"
+#include "seaclaw/sea_shield.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <limits.h>
+#include <unistd.h>
 
 /* ── Helpers ──────────────────────────────────────────────── */
 
@@ -296,4 +300,165 @@ const char* sea_skill_build_prompt(const SeaSkill* skill,
     }
 
     return prompt;
+}
+
+/* ── Skill Install (v2) ──────────────────────────────────── */
+
+SeaError sea_skill_install_content(SeaSkillRegistry* reg,
+                                    const char* content, u32 content_len) {
+    if (!reg || !content || content_len == 0) return SEA_ERR_INVALID_INPUT;
+
+    /* Shield check — reject injection attempts in skill content */
+    SeaSlice content_slice = { .data = (const u8*)content, .len = content_len };
+    if (sea_shield_detect_injection(content_slice)) {
+        SEA_LOG_WARN("SKILL", "Install rejected: injection detected in content");
+        return SEA_ERR_GRAMMAR_REJECT;
+    }
+
+    /* Parse to validate YAML frontmatter */
+    SeaSkill skill;
+    SeaError err = sea_skill_parse(content, content_len, &skill);
+    if (err != SEA_OK) {
+        SEA_LOG_WARN("SKILL", "Install rejected: invalid skill format");
+        return err;
+    }
+
+    /* Check for duplicate */
+    if (sea_skill_find(reg, skill.name)) {
+        SEA_LOG_WARN("SKILL", "Skill already installed: %s", skill.name);
+        return SEA_ERR_ALREADY_EXISTS;
+    }
+
+    /* Write to skills_dir/<name>.md */
+    char dest_path[SEA_SKILL_PATH_MAX + SEA_SKILL_NAME_MAX + 8];
+    snprintf(dest_path, sizeof(dest_path), "%s/%s.md", reg->skills_dir, skill.name);
+
+    FILE* f = fopen(dest_path, "w");
+    if (!f) {
+        SEA_LOG_ERROR("SKILL", "Cannot write to %s", dest_path);
+        return SEA_ERR_IO;
+    }
+    fwrite(content, 1, content_len, f);
+    fclose(f);
+
+    /* Register in memory */
+    strncpy(skill.path, dest_path, SEA_SKILL_PATH_MAX - 1);
+    err = sea_skill_register(reg, &skill);
+    if (err != SEA_OK) return err;
+
+    SEA_LOG_INFO("SKILL", "Installed: %s → %s", skill.name, dest_path);
+    return SEA_OK;
+}
+
+SeaError sea_skill_install(SeaSkillRegistry* reg, const char* url) {
+    if (!reg || !url) return SEA_ERR_INVALID_INPUT;
+
+    /* Basic URL validation */
+    if (strncmp(url, "http://", 7) != 0 && strncmp(url, "https://", 8) != 0) {
+        SEA_LOG_WARN("SKILL", "Install rejected: URL must start with http(s)://");
+        return SEA_ERR_INVALID_INPUT;
+    }
+
+    /* Download */
+    SEA_LOG_INFO("SKILL", "Downloading skill from %s", url);
+    SeaArena dl_arena;
+    SeaError err = sea_arena_create(&dl_arena, 128 * 1024);
+    if (err != SEA_OK) return err;
+
+    SeaHttpResponse resp;
+    err = sea_http_get(url, &dl_arena, &resp);
+    if (err != SEA_OK) {
+        SEA_LOG_ERROR("SKILL", "Download failed: %s", sea_error_str(err));
+        sea_arena_destroy(&dl_arena);
+        return err;
+    }
+
+    if (resp.status_code != 200) {
+        SEA_LOG_ERROR("SKILL", "Download failed: HTTP %d", resp.status_code);
+        sea_arena_destroy(&dl_arena);
+        return SEA_ERR_IO;
+    }
+
+    if (resp.body.len == 0) {
+        SEA_LOG_ERROR("SKILL", "Download returned empty body");
+        sea_arena_destroy(&dl_arena);
+        return SEA_ERR_IO;
+    }
+
+    /* Null-terminate for parsing */
+    char* content = (char*)sea_arena_alloc(&dl_arena, resp.body.len + 1, 1);
+    if (!content) { sea_arena_destroy(&dl_arena); return SEA_ERR_OOM; }
+    memcpy(content, resp.body.data, resp.body.len);
+    content[resp.body.len] = '\0';
+
+    err = sea_skill_install_content(reg, content, resp.body.len);
+    sea_arena_destroy(&dl_arena);
+    return err;
+}
+
+/* ── AGENT.md Discovery (v2) ─────────────────────────────── */
+
+u32 sea_skill_discover_agents(const char* start_dir,
+                               SeaAgentMd* out, u32 max) {
+    if (!start_dir || !out || max == 0) return 0;
+
+    char dir[PATH_MAX];
+    if (!realpath(start_dir, dir)) {
+        strncpy(dir, start_dir, PATH_MAX - 1);
+        dir[PATH_MAX - 1] = '\0';
+    }
+
+    u32 found = 0;
+
+    while (found < max && strlen(dir) > 1) {
+        char agent_path[PATH_MAX + 16];
+        snprintf(agent_path, sizeof(agent_path), "%s/AGENT.md", dir);
+
+        struct stat st;
+        if (stat(agent_path, &st) == 0 && S_ISREG(st.st_mode)) {
+            strncpy(out[found].path, agent_path, SEA_SKILL_PATH_MAX - 1);
+            out[found].path[SEA_SKILL_PATH_MAX - 1] = '\0';
+
+            /* Extract directory name as agent name */
+            const char* last_slash = strrchr(dir, '/');
+            const char* dirname = last_slash ? last_slash + 1 : dir;
+            snprintf(out[found].name, SEA_SKILL_NAME_MAX, "agent:%.56s", dirname);
+
+            SEA_LOG_INFO("SKILL", "Discovered AGENT.md: %s", agent_path);
+            found++;
+        }
+
+        /* Move to parent directory */
+        char* slash = strrchr(dir, '/');
+        if (!slash || slash == dir) break;
+        *slash = '\0';
+    }
+
+    return found;
+}
+
+SeaError sea_skill_load_agents(SeaSkillRegistry* reg, const char* start_dir) {
+    if (!reg) return SEA_ERR_INVALID_INPUT;
+
+    const char* dir = start_dir;
+    char cwd[PATH_MAX];
+    if (!dir) {
+        if (!getcwd(cwd, sizeof(cwd))) return SEA_ERR_IO;
+        dir = cwd;
+    }
+
+    SeaAgentMd agents[SEA_MAX_AGENT_MDS];
+    u32 count = sea_skill_discover_agents(dir, agents, SEA_MAX_AGENT_MDS);
+
+    u32 loaded = 0;
+    for (u32 i = 0; i < count; i++) {
+        if (sea_skill_load_file(reg, agents[i].path) == SEA_OK) {
+            loaded++;
+        }
+    }
+
+    if (loaded > 0) {
+        SEA_LOG_INFO("SKILL", "Loaded %u AGENT.md files", loaded);
+    }
+    return SEA_OK;
 }

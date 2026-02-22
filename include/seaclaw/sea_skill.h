@@ -93,4 +93,34 @@ SeaError sea_skill_enable(SeaSkillRegistry* reg, const char* name, bool enabled)
 const char* sea_skill_build_prompt(const SeaSkill* skill,
                                     const char* user_input, SeaArena* arena);
 
+/* ── Skill Install (v2) ──────────────────────────────────── */
+
+/* Install a skill from a URL (raw .md file, e.g. GitHub raw URL).
+ * Downloads, validates YAML frontmatter, Shield-checks content,
+ * and copies to the skills directory.
+ * Returns SEA_OK on success. */
+SeaError sea_skill_install(SeaSkillRegistry* reg, const char* url);
+
+/* Install a skill from raw markdown content (for testing / local use).
+ * Validates and saves to skills_dir/<name>.md. */
+SeaError sea_skill_install_content(SeaSkillRegistry* reg,
+                                    const char* content, u32 content_len);
+
+/* ── AGENT.md Discovery (v2) ─────────────────────────────── */
+
+#define SEA_MAX_AGENT_MDS 8
+
+typedef struct {
+    char  path[SEA_SKILL_PATH_MAX];
+    char  name[SEA_SKILL_NAME_MAX];
+} SeaAgentMd;
+
+/* Walk from start_dir up to filesystem root, collecting AGENT.md files.
+ * Returns count found (up to max). Nearest (deepest) directory first. */
+u32 sea_skill_discover_agents(const char* start_dir,
+                               SeaAgentMd* out, u32 max);
+
+/* Load all discovered AGENT.md files as skills into the registry. */
+SeaError sea_skill_load_agents(SeaSkillRegistry* reg, const char* start_dir);
+
 #endif /* SEA_SKILL_H */
