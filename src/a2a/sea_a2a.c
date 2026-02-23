@@ -82,6 +82,15 @@ static const char* build_delegate_json(const SeaA2aRequest* req,
 SeaA2aResult sea_a2a_delegate(const SeaA2aPeer* peer,
                                const SeaA2aRequest* req,
                                SeaArena* arena) {
+    if (!peer || !peer->endpoint || !req) {
+        SeaA2aResult err_result = {
+            .task_id = NULL, .success = false, .output = NULL,
+            .latency_ms = 0, .agent_name = NULL, .verified = false,
+            .error = "Invalid peer or request",
+        };
+        return err_result;
+    }
+
     SeaA2aResult result = {
         .task_id = req->task_id,
         .success = false,
@@ -91,11 +100,6 @@ SeaA2aResult sea_a2a_delegate(const SeaA2aPeer* peer,
         .verified = false,
         .error = NULL,
     };
-
-    if (!peer || !peer->endpoint || !req) {
-        result.error = "Invalid peer or request";
-        return result;
-    }
 
     /* Generate task ID if not provided */
     char id_buf[64];

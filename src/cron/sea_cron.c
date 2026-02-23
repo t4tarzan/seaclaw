@@ -9,12 +9,17 @@
 #include "seaclaw/sea_log.h"
 #include "seaclaw/sea_tools.h"
 
+#include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
 /* ── Helpers ──────────────────────────────────────────────── */
+
+/* ── Access internal DB handle ───────────────────────────── */
+
+struct SeaDb { sqlite3* handle; };
 
 static u64 now_epoch(void) {
     return (u64)time(NULL);
@@ -431,10 +436,51 @@ SeaError sea_cron_save(SeaCronScheduler* sched) {
     return SEA_OK;
 }
 
+/* Callback context for loading cron jobs */
+typedef struct {
+    SeaCronScheduler* sched;
+    u32 loaded;
+} CronLoadCtx;
+
+static int cron_row_cb(void* ctx, int ncols, char** vals, char** cols) {
+    CronLoadCtx* lc = (CronLoadCtx*)ctx;
+    if (lc->sched->count >= SEA_MAX_CRON_JOBS) return 0;
+
+    SeaCronJob* j = &lc->sched->jobs[lc->sched->count];
+    memset(j, 0, sizeof(*j));
+
+    for (int i = 0; i < ncols; i++) {
+        if (!vals[i]) continue;
+        if (strcmp(cols[i], "id") == 0)            j->id = atoi(vals[i]);
+        else if (strcmp(cols[i], "name") == 0)     strncpy(j->name, vals[i], SEA_CRON_NAME_MAX - 1);
+        else if (strcmp(cols[i], "type") == 0)     j->type = (SeaCronJobType)atoi(vals[i]);
+        else if (strcmp(cols[i], "state") == 0)    j->state = (SeaCronJobState)atoi(vals[i]);
+        else if (strcmp(cols[i], "sched_type") == 0) j->sched_type = (SeaSchedType)atoi(vals[i]);
+        else if (strcmp(cols[i], "schedule") == 0) strncpy(j->schedule, vals[i], SEA_CRON_EXPR_MAX - 1);
+        else if (strcmp(cols[i], "command") == 0)  strncpy(j->command, vals[i], SEA_CRON_CMD_MAX - 1);
+        else if (strcmp(cols[i], "args") == 0)     strncpy(j->args, vals[i], SEA_CRON_CMD_MAX - 1);
+        else if (strcmp(cols[i], "interval_sec") == 0) j->interval_sec = (u64)atoll(vals[i]);
+        else if (strcmp(cols[i], "next_run") == 0)     j->next_run = (u64)atoll(vals[i]);
+        else if (strcmp(cols[i], "last_run") == 0)     j->last_run = (u64)atoll(vals[i]);
+        else if (strcmp(cols[i], "run_count") == 0)    j->run_count = (u32)atoi(vals[i]);
+        else if (strcmp(cols[i], "fail_count") == 0)   j->fail_count = (u32)atoi(vals[i]);
+        else if (strcmp(cols[i], "created_at") == 0)   j->created_at = (u64)atoll(vals[i]);
+    }
+
+    lc->sched->count++;
+    lc->loaded++;
+    return 0;
+}
+
 SeaError sea_cron_load(SeaCronScheduler* sched) {
     if (!sched || !sched->db) return SEA_ERR_CONFIG;
-    /* Jobs are loaded from DB on startup.
-     * Placeholder for future implementation using sea_db_exec + callback. */
-    SEA_LOG_INFO("CRON", "Job loading from DB (lazy)");
+
+    sched->count = 0; /* Reset before loading */
+    CronLoadCtx ctx = { .sched = sched, .loaded = 0 };
+    sqlite3_exec(sched->db->handle,
+        "SELECT * FROM cron_jobs ORDER BY id ASC;",
+        cron_row_cb, &ctx, NULL);
+
+    SEA_LOG_INFO("CRON", "Loaded %u jobs from DB", ctx.loaded);
     return SEA_OK;
 }
