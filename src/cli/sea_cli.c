@@ -230,7 +230,59 @@ int sea_cmd_doctor(int argc, char** argv) {
         printf("    %s \033[33m○ (will be created)\033[0m\n", skills_path);
     }
 
-    printf("\n  \033[1mTools:\033[0m         58 compiled in\n");
+    printf("\n  \033[1mTools:\033[0m         63 compiled in\n");
+
+    /* API connectivity test */
+    printf("\n  \033[1mAPI Connectivity:\033[0m\n");
+    {
+        const char* prov = cfg.llm_provider ? cfg.llm_provider : "openai";
+        const char* key = cfg.llm_api_key;
+        /* Check env var override */
+        if (!key || !*key) {
+            if (strcmp(prov, "openai") == 0)      key = getenv("OPENAI_API_KEY");
+            else if (strcmp(prov, "anthropic") == 0)  key = getenv("ANTHROPIC_API_KEY");
+            else if (strcmp(prov, "gemini") == 0)     key = getenv("GEMINI_API_KEY");
+            else if (strcmp(prov, "openrouter") == 0) key = getenv("OPENROUTER_API_KEY");
+            else if (strcmp(prov, "zai") == 0)        key = getenv("ZAI_API_KEY");
+        }
+        if (strcmp(prov, "local") == 0) {
+            printf("    %-12s  \033[33m○ local (no key needed)\033[0m\n", prov);
+        } else if (key && *key) {
+            printf("    %-12s  \033[32m✓ key present\033[0m (%.8s...)\n", prov, key);
+        } else {
+            printf("    %-12s  \033[31m✗ no API key\033[0m\n", prov);
+        }
+        /* Check fallback keys */
+        for (u32 fi = 0; fi < cfg.llm_fallback_count; fi++) {
+            const char* fp = cfg.llm_fallbacks[fi].provider;
+            const char* fk = cfg.llm_fallbacks[fi].api_key;
+            if (!fk || !*fk) {
+                if (fp && strcmp(fp, "openai") == 0)      fk = getenv("OPENAI_API_KEY");
+                else if (fp && strcmp(fp, "anthropic") == 0)  fk = getenv("ANTHROPIC_API_KEY");
+                else if (fp && strcmp(fp, "gemini") == 0)     fk = getenv("GEMINI_API_KEY");
+                else if (fp && strcmp(fp, "openrouter") == 0) fk = getenv("OPENROUTER_API_KEY");
+                else if (fp && strcmp(fp, "zai") == 0)        fk = getenv("ZAI_API_KEY");
+            }
+            if (fp && strcmp(fp, "local") == 0) {
+                printf("    %-12s  \033[33m○ local fallback\033[0m\n", fp);
+            } else if (fk && *fk) {
+                printf("    %-12s  \033[32m✓ fallback key present\033[0m\n", fp ? fp : "?");
+            } else {
+                printf("    %-12s  \033[31m✗ fallback key missing\033[0m\n", fp ? fp : "?");
+            }
+        }
+    }
+
+    /* Readline status */
+    printf("\n  \033[1mFeatures:\033[0m\n");
+#ifdef HAVE_READLINE
+    printf("    readline:  \033[32m✓ enabled\033[0m (arrow keys, history)\n");
+#else
+    printf("    readline:  \033[33m○ disabled\033[0m (install libreadline-dev)\n");
+#endif
+    printf("    streaming: available (/stream on)\n");
+    printf("    think:     adjustable (/think off|low|medium|high)\n");
+
     printf("\n  ════════════════════════════════════════\n\n");
     sea_arena_destroy(&da);
     return 0;
