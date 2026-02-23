@@ -29,6 +29,7 @@
 #include "seaclaw/sea_mesh.h"
 #include "sea_zero.h"
 #include "sea_proxy.h"
+#include "seaclaw/sea_api.h"
 #include "sea_workspace.h"
 #include "seaclaw/sea_cli.h"
 #include "seaclaw/sea_ext.h"
@@ -1699,6 +1700,10 @@ static int run_telegram(const char* token, i64 chat_id) {
 extern SeaChannel* sea_channel_telegram_create(const char* bot_token, i64 allowed_chat_id);
 extern void sea_channel_telegram_destroy(SeaChannel* ch);
 
+/* Forward declaration for Slack channel create */
+extern SeaChannel* sea_channel_slack_create(const char* webhook_url);
+extern void sea_channel_slack_destroy(SeaChannel* ch);
+
 static void* gateway_agent_thread(void* arg) {
     (void)arg;
     SEA_LOG_INFO("GATEWAY", "Agent loop started (bus consumer)");
@@ -1817,6 +1822,18 @@ static int run_gateway(const char* tg_token, i64 tg_chat_id) {
         s_tg_channel_ptr = sea_channel_telegram_create(tg_token, tg_chat_id);
         if (s_tg_channel_ptr) {
             sea_channel_manager_register(&s_chan_mgr, s_tg_channel_ptr);
+        }
+    }
+
+    /* Register Slack channel if webhook URL is configured */
+    {
+        const char* slack_url = getenv("SLACK_WEBHOOK_URL");
+        if (slack_url && *slack_url) {
+            SeaChannel* slack_ch = sea_channel_slack_create(slack_url);
+            if (slack_ch) {
+                sea_channel_manager_register(&s_chan_mgr, slack_ch);
+                SEA_LOG_INFO("GATEWAY", "Slack channel registered (webhook)");
+            }
         }
     }
 
@@ -2430,6 +2447,21 @@ int main(int argc, char** argv) {
 
     SEA_LOG_INFO("SHIELD", "Grammar Filter: ACTIVE.");
 
+    /* Start HTTP API server if configured */
+    {
+        const char* api_port_str = getenv("SEA_API_PORT");
+        u16 api_port = api_port_str ? (u16)atoi(api_port_str) : 0;
+        if (api_port > 0 || s_gateway_mode) {
+            SeaApiConfig api_cfg = {
+                .port = api_port > 0 ? api_port : 8899,
+                .agent_cfg = &s_agent_cfg,
+            };
+            if (sea_api_start(&api_cfg) == 0) {
+                SEA_LOG_INFO("STATUS", "HTTP API server on port %u", api_cfg.port);
+            }
+        }
+    }
+
     int ret = 0;
 
     if (s_gateway_mode) {
@@ -2492,6 +2524,7 @@ int main(int argc, char** argv) {
     printf("\n");
     SEA_LOG_INFO("SYSTEM", "Shutting down...");
     sea_proxy_stop(); /* Stop LLM proxy if running (no-op if not started) */
+    sea_api_stop();   /* Stop HTTP API server if running */
     if (s_graph) { sea_graph_destroy(s_graph); s_graph = NULL; }
     if (s_mesh) { sea_mesh_destroy(s_mesh); s_mesh = NULL; }
     if (s_usage) { sea_usage_save(s_usage); s_usage = NULL; }
