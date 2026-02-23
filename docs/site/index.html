@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sea-Claw Documentation — Complete Reference Manual</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<button id="mobile-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">&#9776;</button>
+<nav id="sidebar">
+  <div id="sidebar-header">
+    <h1>&#129408; Sea-Claw Docs</h1>
+    <div class="subtitle">Complete Reference Manual v1.0</div>
+    <input type="text" id="sidebar-search" placeholder="Search sections..." oninput="filterNav(this.value)">
+  </div>
+  <div id="sidebar-nav"></div>
+</nav>
+<main id="content"></main>
+<button id="scroll-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+<script src="nav.js"></script>
+<script src="content-1-intro.js"></script>
+<script src="content-2-start.js"></script>
+<script src="content-3-arch.js"></script>
+<script src="content-4-modules.js"></script>
+<script src="content-5-channels.js"></script>
+<script>
+// Assemble all content sections into #content
+document.getElementById('content').innerHTML =
+  CONTENT_INTRO + CONTENT_START + CONTENT_ARCH + CONTENT_MODULES + CONTENT_CHANNELS;
+</script>
+<script src="app.js"></script>
+</body>
+</html>
