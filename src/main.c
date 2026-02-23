@@ -76,6 +76,7 @@ static SeaArena      s_request_arena;
 static SeaTelegram   s_telegram;
 static bool          s_telegram_mode = false;
 static bool          s_gateway_mode = false;
+static bool          s_tui_mode = false;
 SeaDb*               s_db = NULL;
 static const char*   s_db_path = DEFAULT_DB_PATH;
 static SeaConfig     s_config;
@@ -1771,6 +1772,8 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--gateway") == 0) {
             s_gateway_mode = true;
+        } else if (strcmp(argv[i], "--tui") == 0) {
+            s_tui_mode = true;
         } else if (strcmp(argv[i], "--telegram") == 0 && i + 1 < argc) {
             tg_token = argv[++i];
             s_telegram_mode = true;
@@ -2069,7 +2072,7 @@ int main(int argc, char** argv) {
     /* Config values as fallbacks for CLI args */
     if (!tg_token && s_config.telegram_token) {
         tg_token = s_config.telegram_token;
-        s_telegram_mode = true;
+        if (!s_tui_mode) s_telegram_mode = true;
     }
     if (tg_chat_id == 0 && s_config.telegram_chat_id != 0) {
         tg_chat_id = s_config.telegram_chat_id;
