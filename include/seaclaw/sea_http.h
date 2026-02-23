@@ -34,4 +34,9 @@ SeaError sea_http_post_json_auth(const char* url, SeaSlice json_body,
                                  const char* auth_header,
                                  SeaArena* arena, SeaHttpResponse* resp);
 
+/* HTTP POST with JSON body + multiple custom headers (NULL-terminated array) */
+SeaError sea_http_post_json_headers(const char* url, SeaSlice json_body,
+                                    const char** extra_headers,
+                                    SeaArena* arena, SeaHttpResponse* resp);
+
 #endif /* SEA_HTTP_H */

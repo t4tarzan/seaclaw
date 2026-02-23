@@ -296,24 +296,30 @@ static ParsedResponse parse_llm_response(const char* body, u32 body_len,
         return pr;
     }
 
-    /* Extract choices[0].message.content */
+    /* Extract content — try OpenAI format first, then Anthropic */
+    SeaSlice content_slice = {0};
+
+    /* OpenAI format: choices[0].message.content */
     const SeaJsonValue* choices = sea_json_get(&root, "choices");
-    if (!choices || choices->type != SEA_JSON_ARRAY || choices->array.count == 0) {
-        SEA_LOG_ERROR("AGENT", "No choices in LLM response");
-        return pr;
+    if (choices && choices->type == SEA_JSON_ARRAY && choices->array.count > 0) {
+        const SeaJsonValue* first = &choices->array.items[0];
+        const SeaJsonValue* message = sea_json_get(first, "message");
+        if (message) {
+            content_slice = sea_json_get_string(message, "content");
+            /* Z.AI GLM-5 may put response in reasoning_content when content is empty */
+            if (content_slice.len == 0) {
+                content_slice = sea_json_get_string(message, "reasoning_content");
+            }
+        }
     }
 
-    const SeaJsonValue* first = &choices->array.items[0];
-    const SeaJsonValue* message = sea_json_get(first, "message");
-    if (!message) {
-        SEA_LOG_ERROR("AGENT", "No message in choice");
-        return pr;
-    }
-
-    SeaSlice content_slice = sea_json_get_string(message, "content");
-    /* Z.AI GLM-5 may put response in reasoning_content when content is empty */
+    /* Anthropic format: content[0].text */
     if (content_slice.len == 0) {
-        content_slice = sea_json_get_string(message, "reasoning_content");
+        const SeaJsonValue* content_arr = sea_json_get(&root, "content");
+        if (content_arr && content_arr->type == SEA_JSON_ARRAY && content_arr->array.count > 0) {
+            const SeaJsonValue* first_block = &content_arr->array.items[0];
+            content_slice = sea_json_get_string(first_block, "text");
+        }
     }
     if (content_slice.len == 0) {
         pr.text = "";
@@ -404,7 +410,61 @@ static ParsedResponse parse_llm_response(const char* body, u32 body_len,
     return pr;
 }
 
-/* ── Build auth header ────────────────────────────────────── */
+/* ── Build Anthropic Messages API request JSON ───────── */
+
+static const char* build_anthropic_request_json(SeaAgentConfig* cfg,
+                                                const char* system_prompt,
+                                                SeaChatMsg* history, u32 history_count,
+                                                const char* user_input,
+                                                SeaArena* arena) {
+    StrBuf sb = strbuf_new(arena, 4096);
+
+    strbuf_append(&sb, "{\"model\":\"");
+    strbuf_append(&sb, cfg->model);
+    strbuf_append(&sb, "\",\"max_tokens\":");
+
+    char num[32];
+    snprintf(num, sizeof(num), "%u", cfg->max_tokens);
+    strbuf_append(&sb, num);
+
+    snprintf(num, sizeof(num), ",\"temperature\":%.1f", cfg->temperature);
+    strbuf_append(&sb, num);
+
+    /* Anthropic: system is a top-level string, not a message */
+    strbuf_append(&sb, ",\"system\":\"");
+    strbuf_append_json_escaped(&sb, system_prompt);
+    strbuf_append(&sb, "\"");
+
+    strbuf_append(&sb, ",\"messages\":[");
+
+    bool first = true;
+    /* History */
+    for (u32 i = 0; i < history_count; i++) {
+        if (!first) strbuf_append(&sb, ",");
+        first = false;
+        strbuf_append(&sb, "{\"role\":\"");
+        switch (history[i].role) {
+            case SEA_ROLE_USER:      strbuf_append(&sb, "user"); break;
+            case SEA_ROLE_ASSISTANT: strbuf_append(&sb, "assistant"); break;
+            case SEA_ROLE_TOOL:      strbuf_append(&sb, "user"); break;
+            default:                 strbuf_append(&sb, "user"); break;
+        }
+        strbuf_append(&sb, "\",\"content\":\"");
+        strbuf_append_json_escaped(&sb, history[i].content);
+        strbuf_append(&sb, "\"}");
+    }
+
+    /* Current user message */
+    if (!first) strbuf_append(&sb, ",");
+    strbuf_append(&sb, "{\"role\":\"user\",\"content\":\"");
+    strbuf_append_json_escaped(&sb, user_input);
+    strbuf_append(&sb, "\"}");
+
+    strbuf_append(&sb, "]}");
+    return sb.buf;
+}
+
+/* ── Build auth header(s) ────────────────────────────── */
 
 static const char* build_auth_header(SeaAgentConfig* cfg, SeaArena* arena) {
     if (!cfg->api_key || !cfg->api_key[0]) return NULL;
@@ -424,6 +484,27 @@ static const char* build_auth_header(SeaAgentConfig* cfg, SeaArena* arena) {
     memcpy(hdr + plen, cfg->api_key, klen);
     hdr[plen + klen] = '\0';
     return hdr;
+}
+
+/* Build Anthropic-specific headers array (NULL-terminated) */
+static const char** build_anthropic_headers(SeaAgentConfig* cfg, SeaArena* arena) {
+    if (!cfg->api_key || !cfg->api_key[0]) return NULL;
+
+    const char** hdrs = (const char**)sea_arena_alloc(arena, 3 * sizeof(const char*), 8);
+    if (!hdrs) return NULL;
+
+    /* x-api-key header */
+    u32 klen = (u32)strlen(cfg->api_key);
+    char* key_hdr = (char*)sea_arena_alloc(arena, 12 + klen + 1, 1);
+    if (key_hdr) {
+        memcpy(key_hdr, "x-api-key: ", 11);
+        memcpy(key_hdr + 11, cfg->api_key, klen);
+        key_hdr[11 + klen] = '\0';
+    }
+    hdrs[0] = key_hdr;
+    hdrs[1] = "anthropic-version: 2023-06-01";
+    hdrs[2] = NULL;
+    return hdrs;
 }
 
 /* ── Main agent chat loop ─────────────────────────────────── */
@@ -488,8 +569,12 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
         system_prompt = mp.buf;
     }
 
-    /* Build auth header */
-    const char* auth_hdr = build_auth_header(cfg, arena);
+    /* Build auth header (non-Anthropic providers) */
+    const char* auth_hdr = (cfg->provider != SEA_LLM_ANTHROPIC)
+        ? build_auth_header(cfg, arena) : NULL;
+    /* Build Anthropic-specific headers */
+    const char** anthropic_hdrs = (cfg->provider == SEA_LLM_ANTHROPIC)
+        ? build_anthropic_headers(cfg, arena) : NULL;
 
     /* Accumulate tool messages for multi-round */
     #define MAX_EXTRA_MSGS 16
@@ -514,9 +599,15 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
             }
         }
 
-        /* Build request JSON */
-        const char* req_json = build_request_json(cfg, system_prompt,
-            combined, total_hist, current_input, arena);
+        /* Build request JSON (Anthropic uses different format) */
+        const char* req_json;
+        if (cfg->provider == SEA_LLM_ANTHROPIC) {
+            req_json = build_anthropic_request_json(cfg, system_prompt,
+                combined, total_hist, current_input, arena);
+        } else {
+            req_json = build_request_json(cfg, system_prompt,
+                combined, total_hist, current_input, arena);
+        }
         if (!req_json) {
             result.error = SEA_ERR_OOM;
             result.text = "Failed to build request";
@@ -533,7 +624,9 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
         bool got_response = false;
 
         /* Try primary provider */
-        if (auth_hdr) {
+        if (anthropic_hdrs) {
+            err = sea_http_post_json_headers(cfg->api_url, body, anthropic_hdrs, arena, &resp);
+        } else if (auth_hdr) {
             err = sea_http_post_json_auth(cfg->api_url, body, auth_hdr, arena, &resp);
         } else {
             err = sea_http_post_json(cfg->api_url, body, arena, &resp);
@@ -562,20 +655,31 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
             fb_cfg.model    = f->model;
             sea_agent_defaults(&fb_cfg);
 
-            const char* fb_json = build_request_json(&fb_cfg, system_prompt,
-                combined, total_hist, current_input, arena);
+            const char* fb_json;
+            if (fb_cfg.provider == SEA_LLM_ANTHROPIC) {
+                fb_json = build_anthropic_request_json(&fb_cfg, system_prompt,
+                    combined, total_hist, current_input, arena);
+            } else {
+                fb_json = build_request_json(&fb_cfg, system_prompt,
+                    combined, total_hist, current_input, arena);
+            }
             if (!fb_json) continue;
 
-            const char* fb_auth = build_auth_header(&fb_cfg, arena);
             SeaSlice fb_body = { .data = (const u8*)fb_json, .len = (u32)strlen(fb_json) };
 
             SEA_LOG_INFO("AGENT", "Fallback %u: trying %s (%s)",
                          fb + 1, fb_cfg.api_url, fb_cfg.model);
 
-            if (fb_auth) {
-                err = sea_http_post_json_auth(fb_cfg.api_url, fb_body, fb_auth, arena, &resp);
+            if (fb_cfg.provider == SEA_LLM_ANTHROPIC) {
+                const char** fb_hdrs = build_anthropic_headers(&fb_cfg, arena);
+                err = sea_http_post_json_headers(fb_cfg.api_url, fb_body, fb_hdrs, arena, &resp);
             } else {
-                err = sea_http_post_json(fb_cfg.api_url, fb_body, arena, &resp);
+                const char* fb_auth = build_auth_header(&fb_cfg, arena);
+                if (fb_auth) {
+                    err = sea_http_post_json_auth(fb_cfg.api_url, fb_body, fb_auth, arena, &resp);
+                } else {
+                    err = sea_http_post_json(fb_cfg.api_url, fb_body, arena, &resp);
+                }
             }
 
             if (err == SEA_OK && resp.status_code == 200) {
