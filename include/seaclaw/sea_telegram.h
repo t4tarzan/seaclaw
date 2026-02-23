@@ -33,6 +33,9 @@ SeaError sea_telegram_init(SeaTelegram* tg, const char* bot_token,
                            i64 allowed_chat_id, SeaTelegramHandler handler,
                            SeaArena* arena);
 
+/* Clear any stale webhook before starting long-polling */
+SeaError sea_telegram_delete_webhook(SeaTelegram* tg);
+
 /* Poll for updates once. Call this in the event loop. */
 SeaError sea_telegram_poll(SeaTelegram* tg);
 

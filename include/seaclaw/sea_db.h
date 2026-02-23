@@ -177,4 +177,40 @@ typedef struct {
 i32 sea_db_sz_audit_list(SeaDb* db, SeaDbAuditEvent* events, u32 max,
                           SeaArena* arena);
 
+/* ── Usability Testing (E13–E17) ─────────────────────────── */
+
+typedef struct {
+    i32         id;
+    const char* sprint;     /* E13, E14, E15, E16, E17 */
+    const char* test_name;
+    const char* category;   /* channel, telegram, streaming, multi_agent, gateway */
+    const char* status;     /* pending, running, passed, failed, skipped */
+    const char* input;
+    const char* expected;
+    const char* actual;
+    i32         latency_ms;
+    const char* error;
+    const char* env;        /* docker, host */
+    const char* created_at;
+    const char* finished_at;
+} SeaDbUTest;
+
+SeaError sea_db_utest_log(SeaDb* db, const char* sprint,
+                           const char* test_name, const char* category,
+                           const char* input, const char* expected);
+
+SeaError sea_db_utest_pass(SeaDb* db, i32 test_id,
+                            const char* actual, i32 latency_ms);
+
+SeaError sea_db_utest_fail(SeaDb* db, i32 test_id,
+                            const char* actual, const char* error,
+                            i32 latency_ms);
+
+i32 sea_db_utest_list(SeaDb* db, const char* sprint_filter,
+                       SeaDbUTest* out, i32 max_count, SeaArena* arena);
+
+/* Summary: count passed/failed/pending for a sprint */
+void sea_db_utest_summary(SeaDb* db, const char* sprint,
+                           i32* passed, i32* failed, i32* pending);
+
 #endif /* SEA_DB_H */

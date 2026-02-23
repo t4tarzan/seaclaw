@@ -410,6 +410,74 @@ static ParsedResponse parse_llm_response(const char* body, u32 body_len,
     return pr;
 }
 
+/* ── SSE streaming: extract content delta from data line ── */
+
+typedef struct {
+    SeaStreamCallback user_cb;
+    void*             user_data;
+    SeaArena*         arena;
+} SseCtx;
+
+static bool sse_data_cb(const char* data, u32 data_len, void* user_data) {
+    SseCtx* ctx = (SseCtx*)user_data;
+    if (!ctx->user_cb || !data || data_len == 0) return true;
+
+    /* Quick parse: find "content":" or "text":" in the SSE JSON chunk */
+    /* OpenAI: {"choices":[{"delta":{"content":"token"}}]} */
+    /* Anthropic: {"type":"content_block_delta","delta":{"text":"token"}} */
+
+    const char* needle = NULL;
+    u32 needle_len = 0;
+
+    /* Try "content":" first (OpenAI delta) */
+    const char* p = data;
+    const char* end = data + data_len;
+    for (const char* s = p; s < end - 11; s++) {
+        if (memcmp(s, "\"content\":\"", 11) == 0) {
+            needle = s + 11;
+            needle_len = 11;
+            break;
+        }
+    }
+    /* Try "text":" (Anthropic delta) */
+    if (!needle) {
+        for (const char* s = p; s < end - 8; s++) {
+            if (memcmp(s, "\"text\":\"", 8) == 0) {
+                needle = s + 8;
+                needle_len = 8;
+                break;
+            }
+        }
+    }
+    (void)needle_len;
+
+    if (!needle || needle >= end) return true;
+
+    /* Extract until closing unescaped quote */
+    char buf[2048];
+    u32 bi = 0;
+    for (const char* c = needle; c < end && bi < sizeof(buf) - 1; c++) {
+        if (*c == '\\' && c + 1 < end) {
+            c++;
+            if (*c == '"')       buf[bi++] = '"';
+            else if (*c == 'n')  buf[bi++] = '\n';
+            else if (*c == 'r')  buf[bi++] = '\r';
+            else if (*c == 't')  buf[bi++] = '\t';
+            else if (*c == '\\') buf[bi++] = '\\';
+            else { buf[bi++] = '\\'; buf[bi++] = *c; }
+        } else if (*c == '"') {
+            break;
+        } else {
+            buf[bi++] = *c;
+        }
+    }
+
+    if (bi > 0) {
+        return ctx->user_cb(buf, bi, ctx->user_data);
+    }
+    return true;
+}
+
 /* ── Build Anthropic Messages API request JSON ───────── */
 
 static const char* build_anthropic_request_json(SeaAgentConfig* cfg,
@@ -614,8 +682,23 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
             return result;
         }
 
-        SEA_LOG_INFO("AGENT", "Round %u: sending %u bytes to %s",
-                     round + 1, (u32)strlen(req_json), cfg->api_url);
+        /* Inject "stream":true if streaming is enabled (first round only, no tool calls) */
+        bool use_stream = (cfg->stream_cb != NULL && round == 0);
+        if (use_stream) {
+            /* Prepend stream flag after opening brace */
+            u32 rlen = (u32)strlen(req_json);
+            char* streamed = (char*)sea_arena_alloc(arena, rlen + 20, 1);
+            if (streamed) {
+                streamed[0] = '{';
+                memcpy(streamed + 1, "\"stream\":true,", 14);
+                memcpy(streamed + 15, req_json + 1, rlen); /* includes trailing \0 */
+                req_json = streamed;
+            }
+        }
+
+        SEA_LOG_INFO("AGENT", "Round %u: sending %u bytes to %s%s",
+                     round + 1, (u32)strlen(req_json), cfg->api_url,
+                     use_stream ? " (streaming)" : "");
 
         /* Make HTTP request — with fallback chain */
         SeaSlice body = { .data = (const u8*)req_json, .len = (u32)strlen(req_json) };
@@ -623,8 +706,25 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
         SeaError err = SEA_ERR_IO;
         bool got_response = false;
 
-        /* Try primary provider */
+        /* Build headers array for streaming/Anthropic */
+        const char* all_hdrs[4] = {0};
+        u32 hi = 0;
         if (anthropic_hdrs) {
+            for (const char** h = anthropic_hdrs; *h; h++) all_hdrs[hi++] = *h;
+        } else if (auth_hdr) {
+            all_hdrs[hi++] = auth_hdr;
+        }
+        all_hdrs[hi] = NULL;
+
+        /* Try primary provider */
+        if (use_stream) {
+            SseCtx sse_ctx = { .user_cb = cfg->stream_cb,
+                               .user_data = cfg->stream_user_data,
+                               .arena = arena };
+            err = sea_http_post_stream(cfg->api_url, body,
+                                        hi > 0 ? all_hdrs : NULL,
+                                        sse_data_cb, &sse_ctx, arena, &resp);
+        } else if (anthropic_hdrs) {
             err = sea_http_post_json_headers(cfg->api_url, body, anthropic_hdrs, arena, &resp);
         } else if (auth_hdr) {
             err = sea_http_post_json_auth(cfg->api_url, body, auth_hdr, arena, &resp);
@@ -707,6 +807,14 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
                 result.text = "All LLM providers failed";
             }
             SEA_LOG_ERROR("AGENT", "All providers exhausted");
+            return result;
+        }
+
+        /* If streaming was used, tokens were already sent to user via callback.
+         * The SSE body is not a single JSON object, so skip normal parsing. */
+        if (use_stream && got_response) {
+            result.text = "";
+            result.error = SEA_OK;
             return result;
         }
 

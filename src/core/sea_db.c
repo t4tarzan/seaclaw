@@ -128,7 +128,28 @@ static const char* SCHEMA_SQL =
     "CREATE INDEX IF NOT EXISTS idx_sz_llm_task ON seazero_llm_usage(task_id);"
     "CREATE INDEX IF NOT EXISTS idx_sz_audit_type ON seazero_audit(event_type);"
     "CREATE INDEX IF NOT EXISTS idx_sz_audit_source ON seazero_audit(source);"
-    "CREATE INDEX IF NOT EXISTS idx_sz_agents_status ON seazero_agents(status);";
+    "CREATE INDEX IF NOT EXISTS idx_sz_agents_status ON seazero_agents(status);"
+
+    /* ── Usability Testing (E13–E17) ─────────────────────── */
+
+    "CREATE TABLE IF NOT EXISTS usability_tests ("
+    "  id          INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "  sprint      TEXT NOT NULL,"
+    "  test_name   TEXT NOT NULL,"
+    "  category    TEXT NOT NULL,"
+    "  status      TEXT NOT NULL DEFAULT 'pending',"
+    "  input       TEXT,"
+    "  expected    TEXT,"
+    "  actual      TEXT,"
+    "  latency_ms  INTEGER DEFAULT 0,"
+    "  error       TEXT,"
+    "  env         TEXT DEFAULT 'docker',"
+    "  created_at  DATETIME DEFAULT (datetime('now')),"
+    "  finished_at DATETIME"
+    ");"
+    "CREATE INDEX IF NOT EXISTS idx_ut_sprint ON usability_tests(sprint);"
+    "CREATE INDEX IF NOT EXISTS idx_ut_status ON usability_tests(status);"
+    "CREATE INDEX IF NOT EXISTS idx_ut_category ON usability_tests(category);";
 
 /* ── Lifecycle ────────────────────────────────────────────── */
 
@@ -819,4 +840,165 @@ i32 sea_db_sz_audit_list(SeaDb* db, SeaDbAuditEvent* events, u32 max,
 
     sqlite3_finalize(stmt);
     return count;
+}
+
+/* ── Usability Testing (E13–E17) ────────────────────────── */
+
+SeaError sea_db_utest_log(SeaDb* db, const char* sprint,
+                           const char* test_name, const char* category,
+                           const char* input, const char* expected) {
+    if (!db || !sprint || !test_name || !category) return SEA_ERR_IO;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "INSERT INTO usability_tests (sprint, test_name, category, status, input, expected) "
+        "VALUES (?, ?, ?, 'running', ?, ?)";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return SEA_ERR_IO;
+
+    sqlite3_bind_text(stmt, 1, sprint, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, test_name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, category, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 4, input, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 5, expected, -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
+}
+
+SeaError sea_db_utest_pass(SeaDb* db, i32 test_id,
+                            const char* actual, i32 latency_ms) {
+    if (!db) return SEA_ERR_IO;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "UPDATE usability_tests SET status='passed', actual=?, latency_ms=?, "
+        "finished_at=datetime('now') WHERE id=?";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return SEA_ERR_IO;
+
+    sqlite3_bind_text(stmt, 1, actual, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 2, latency_ms);
+    sqlite3_bind_int(stmt, 3, test_id);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
+}
+
+SeaError sea_db_utest_fail(SeaDb* db, i32 test_id,
+                            const char* actual, const char* error,
+                            i32 latency_ms) {
+    if (!db) return SEA_ERR_IO;
+
+    sqlite3_stmt* stmt;
+    const char* sql =
+        "UPDATE usability_tests SET status='failed', actual=?, error=?, latency_ms=?, "
+        "finished_at=datetime('now') WHERE id=?";
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return SEA_ERR_IO;
+
+    sqlite3_bind_text(stmt, 1, actual, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, error, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 3, latency_ms);
+    sqlite3_bind_int(stmt, 4, test_id);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    return (rc == SQLITE_DONE) ? SEA_OK : SEA_ERR_IO;
+}
+
+static const char* utest_arena_dup(SeaArena* arena, const char* src) {
+    if (!src) return NULL;
+    u64 len = strlen(src);
+    char* s = (char*)sea_arena_push(arena, len + 1);
+    if (!s) return NULL;
+    memcpy(s, src, len + 1);
+    return s;
+}
+
+i32 sea_db_utest_list(SeaDb* db, const char* sprint_filter,
+                       SeaDbUTest* out, i32 max_count, SeaArena* arena) {
+    if (!db || !out || max_count <= 0 || !arena) return 0;
+
+    sqlite3_stmt* stmt;
+    const char* sql;
+    if (sprint_filter && *sprint_filter) {
+        sql = "SELECT id, sprint, test_name, category, status, input, expected, "
+              "actual, latency_ms, error, env, created_at, finished_at "
+              "FROM usability_tests WHERE sprint=? ORDER BY id DESC LIMIT ?";
+    } else {
+        sql = "SELECT id, sprint, test_name, category, status, input, expected, "
+              "actual, latency_ms, error, env, created_at, finished_at "
+              "FROM usability_tests ORDER BY id DESC LIMIT ?";
+    }
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return 0;
+
+    int bind_idx = 1;
+    if (sprint_filter && *sprint_filter) {
+        sqlite3_bind_text(stmt, bind_idx++, sprint_filter, -1, SQLITE_STATIC);
+    }
+    sqlite3_bind_int(stmt, bind_idx, max_count);
+
+    i32 count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        out[count].id         = sqlite3_column_int(stmt, 0);
+        out[count].sprint     = utest_arena_dup(arena, (const char*)sqlite3_column_text(stmt, 1));
+        out[count].test_name  = utest_arena_dup(arena, (const char*)sqlite3_column_text(stmt, 2));
+        out[count].category   = utest_arena_dup(arena, (const char*)sqlite3_column_text(stmt, 3));
+        out[count].status     = utest_arena_dup(arena, (const char*)sqlite3_column_text(stmt, 4));
+        out[count].input      = utest_arena_dup(arena, (const char*)sqlite3_column_text(stmt, 5));
+        out[count].expected   = utest_arena_dup(arena, (const char*)sqlite3_column_text(stmt, 6));
+        out[count].actual     = utest_arena_dup(arena, (const char*)sqlite3_column_text(stmt, 7));
+        out[count].latency_ms = sqlite3_column_int(stmt, 8);
+        out[count].error      = utest_arena_dup(arena, (const char*)sqlite3_column_text(stmt, 9));
+        out[count].env        = utest_arena_dup(arena, (const char*)sqlite3_column_text(stmt, 10));
+        out[count].created_at = utest_arena_dup(arena, (const char*)sqlite3_column_text(stmt, 11));
+        out[count].finished_at= utest_arena_dup(arena, (const char*)sqlite3_column_text(stmt, 12));
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    return count;
+}
+
+void sea_db_utest_summary(SeaDb* db, const char* sprint,
+                           i32* passed, i32* failed, i32* pending) {
+    if (!db) return;
+    *passed = *failed = *pending = 0;
+
+    sqlite3_stmt* stmt;
+    const char* sql;
+    if (sprint && *sprint) {
+        sql = "SELECT status, COUNT(*) FROM usability_tests WHERE sprint=? GROUP BY status";
+    } else {
+        sql = "SELECT status, COUNT(*) FROM usability_tests GROUP BY status";
+    }
+
+    int rc = sqlite3_prepare_v2(db->handle, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return;
+
+    if (sprint && *sprint) {
+        sqlite3_bind_text(stmt, 1, sprint, -1, SQLITE_STATIC);
+    }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* st = (const char*)sqlite3_column_text(stmt, 0);
+        i32 cnt = sqlite3_column_int(stmt, 1);
+        if (!st) continue;
+        if (strcmp(st, "passed") == 0) *passed = cnt;
+        else if (strcmp(st, "failed") == 0) *failed = cnt;
+        else *pending += cnt;
+    }
+
+    sqlite3_finalize(stmt);
 }

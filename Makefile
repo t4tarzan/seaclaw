@@ -99,12 +99,16 @@ BRAIN_SRC := \
 A2A_SRC := \
 	src/a2a/sea_a2a.c
 
+API_SRC := \
+	src/api/sea_api.c
+
 BUS_SRC := \
 	src/bus/sea_bus.c
 
 CHANNEL_SRC := \
 	src/channels/sea_channel.c \
-	src/channels/channel_telegram.c
+	src/channels/channel_telegram.c \
+	src/channels/channel_slack.c
 
 SESSION_SRC := \
 	src/session/sea_session.c
@@ -216,7 +220,7 @@ SEAZERO_SRC := \
 
 MAIN_SRC := src/main.c
 
-ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(A2A_SRC) $(BUS_SRC) $(CHANNEL_SRC) $(SESSION_SRC) $(MEMORY_SRC) $(CRON_SRC) $(SKILL_SRC) $(USAGE_SRC) $(RECALL_SRC) $(PII_SRC) $(MESH_SRC) $(CLI_SRC) $(EXT_SRC) $(AUTH_SRC) $(HEARTBEAT_SRC) $(GRAPH_SRC) $(WS_SRC) $(HANDS_SRC) $(SEAZERO_SRC) $(MAIN_SRC)
+ALL_SRC := $(CORE_SRC) $(SENSES_SRC) $(SHIELD_SRC) $(TELEGRAM_SRC) $(BRAIN_SRC) $(A2A_SRC) $(API_SRC) $(BUS_SRC) $(CHANNEL_SRC) $(SESSION_SRC) $(MEMORY_SRC) $(CRON_SRC) $(SKILL_SRC) $(USAGE_SRC) $(RECALL_SRC) $(PII_SRC) $(MESH_SRC) $(CLI_SRC) $(EXT_SRC) $(AUTH_SRC) $(HEARTBEAT_SRC) $(GRAPH_SRC) $(WS_SRC) $(HANDS_SRC) $(SEAZERO_SRC) $(MAIN_SRC)
 ALL_OBJ := $(ALL_SRC:.c=.o)
 
 TEST_ARENA_SRC := tests/test_arena.c

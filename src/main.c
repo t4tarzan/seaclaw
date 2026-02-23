@@ -29,6 +29,7 @@
 #include "seaclaw/sea_mesh.h"
 #include "sea_zero.h"
 #include "sea_proxy.h"
+#include "seaclaw/sea_api.h"
 #include "sea_workspace.h"
 #include "seaclaw/sea_cli.h"
 #include "seaclaw/sea_ext.h"
@@ -362,6 +363,8 @@ static void cmd_help(void) {
     printf("    /sztasks           Show delegated task history\n");
     printf("    /usage             LLM token usage breakdown\n");
     printf("    /audit             Recent security events\n");
+    printf("    /seazero           Multi-agent status dashboard\n");
+    printf("    /utests [sprint]   Usability test results (E13-E17)\n");
     printf("\n");
 }
 
@@ -831,6 +834,130 @@ static void cmd_recall(const char* input) {
     printf("\n");
 }
 
+/* ── TUI: /seazero ───────────────────────────────────────── */
+
+static void cmd_seazero(void) {
+    printf("\n  \033[1mSeaZero Multi-Agent Status\033[0m\n");
+    printf("  ════════════════════════════════════════\n");
+
+    /* Proxy status */
+    bool proxy_up = sea_proxy_running();
+    printf("  LLM Proxy:     %s (port 7432)\n",
+           proxy_up ? "\033[32m● running\033[0m" : "\033[31m● stopped\033[0m");
+
+    /* Agent Zero health */
+    SeaArena tmp;
+    sea_arena_create(&tmp, 4096);
+    SeaZeroConfig zcfg = {0};
+    if (s_db) {
+        const char* url = sea_db_config_get(s_db, "seazero_agent_url", &tmp);
+        sea_zero_init(&zcfg, url);
+    }
+    if (zcfg.enabled) {
+        SeaZeroHealth h = sea_zero_health(&zcfg, &tmp);
+        printf("  Agent Zero:    %s",
+               h.reachable ? "\033[32m● reachable\033[0m" : "\033[31m● unreachable\033[0m");
+        if (h.reachable) {
+            printf(" (%s, %u active tasks)", h.status ? h.status : "?", h.active_tasks);
+        }
+        printf("\n");
+    } else {
+        printf("  Agent Zero:    \033[33m○ not configured\033[0m\n");
+    }
+    sea_arena_destroy(&tmp);
+
+    /* Registered agents from DB */
+    if (s_db) {
+        SeaDbAgent agents[8];
+        i32 ac = sea_db_sz_agent_list(s_db, agents, 8, &s_request_arena);
+        printf("  Agents in DB:  %d registered\n", ac);
+        for (i32 i = 0; i < ac; i++) {
+            const char* icon = "\033[32m●\033[0m";
+            if (agents[i].status && strcmp(agents[i].status, "stopped") == 0)
+                icon = "\033[31m●\033[0m";
+            printf("    %s %s  port:%d  %s/%s\n",
+                   icon, agents[i].agent_id, agents[i].port,
+                   agents[i].provider ? agents[i].provider : "?",
+                   agents[i].model ? agents[i].model : "?");
+        }
+
+        /* Recent delegated tasks */
+        SeaDbSzTask tasks[5];
+        i32 tc = sea_db_sz_task_list(s_db, NULL, tasks, 5, &s_request_arena);
+        printf("  Recent tasks:  %d\n", tc);
+        for (i32 i = 0; i < tc; i++) {
+            const char* icon = "\033[33m○\033[0m";
+            if (tasks[i].status && strcmp(tasks[i].status, "completed") == 0)
+                icon = "\033[32m✓\033[0m";
+            else if (tasks[i].status && strcmp(tasks[i].status, "failed") == 0)
+                icon = "\033[31m✗\033[0m";
+            printf("    %s [%s] %.50s%s\n", icon,
+                   tasks[i].status ? tasks[i].status : "?",
+                   tasks[i].task_text ? tasks[i].task_text : "?",
+                   tasks[i].task_text && strlen(tasks[i].task_text) > 50 ? "..." : "");
+        }
+        sea_arena_reset(&s_request_arena);
+    }
+
+    printf("  ════════════════════════════════════════\n\n");
+}
+
+/* ── TUI: /utests ────────────────────────────────────────── */
+
+static void cmd_utests(const char* input) {
+    if (!s_db) { printf("  No database loaded.\n"); return; }
+
+    const char* sprint_filter = NULL;
+    if (strlen(input) > 7) {
+        const char* rest = input + 7;
+        while (*rest == ' ') rest++;
+        if (*rest) sprint_filter = rest;
+    }
+
+    /* Summary */
+    i32 passed = 0, failed = 0, pending = 0;
+    sea_db_utest_summary(s_db, sprint_filter, &passed, &failed, &pending);
+    i32 total = passed + failed + pending;
+
+    printf("\n  \033[1mUsability Tests%s%s (%d total):\033[0m\n",
+           sprint_filter ? " [" : "", sprint_filter ? sprint_filter : "",
+           total);
+    if (sprint_filter) printf("  ");
+    if (total > 0) {
+        printf("    \033[32m%d passed\033[0m  \033[31m%d failed\033[0m  \033[33m%d pending\033[0m\n",
+               passed, failed, pending);
+    }
+
+    /* List recent tests */
+    SeaDbUTest tests[32];
+    i32 count = sea_db_utest_list(s_db, sprint_filter, tests, 32, &s_request_arena);
+    if (count == 0) {
+        printf("    (no tests recorded yet)\n");
+    }
+    for (i32 i = 0; i < count; i++) {
+        const char* icon = "\033[33m○\033[0m";
+        if (tests[i].status && strcmp(tests[i].status, "passed") == 0)
+            icon = "\033[32m✓\033[0m";
+        else if (tests[i].status && strcmp(tests[i].status, "failed") == 0)
+            icon = "\033[31m✗\033[0m";
+        else if (tests[i].status && strcmp(tests[i].status, "running") == 0)
+            icon = "\033[33m►\033[0m";
+
+        printf("    %s [%s] %s — %s",
+               icon,
+               tests[i].sprint ? tests[i].sprint : "?",
+               tests[i].test_name ? tests[i].test_name : "?",
+               tests[i].category ? tests[i].category : "?");
+        if (tests[i].latency_ms > 0)
+            printf(" (%dms)", tests[i].latency_ms);
+        if (tests[i].error)
+            printf(" \033[31m%s\033[0m", tests[i].error);
+        printf("\n");
+    }
+    printf("\n");
+    sea_arena_reset(&s_request_arena);
+}
+
 /* ── TUI: /mesh ──────────────────────────────────────────── */
 
 static void cmd_mesh(void) {
@@ -1004,6 +1131,10 @@ static void dispatch_command(const char* input) {
         cmd_stream(input);
     } else if (strcmp(input, "/think") == 0 || strncmp(input, "/think ", 7) == 0) {
         cmd_think(input);
+    } else if (strcmp(input, "/seazero") == 0) {
+        cmd_seazero();
+    } else if (strcmp(input, "/utests") == 0 || strncmp(input, "/utests ", 8) == 0) {
+        cmd_utests(input);
     } else if (strcmp(input, "/clear") == 0) {
         printf("\033[2J\033[H");
         printf("%s\n", BANNER);
@@ -1547,6 +1678,9 @@ static int run_telegram(const char* token, i64 chat_id) {
         return 1;
     }
 
+    /* Clear any stale webhook to prevent HTTP 409 conflicts */
+    sea_telegram_delete_webhook(&s_telegram);
+
     SEA_LOG_INFO("STATUS", "Telegram polling started. Ctrl+C to stop.");
 
     while (s_running) {
@@ -1565,6 +1699,10 @@ static int run_telegram(const char* token, i64 chat_id) {
 /* Forward declaration for Telegram channel create */
 extern SeaChannel* sea_channel_telegram_create(const char* bot_token, i64 allowed_chat_id);
 extern void sea_channel_telegram_destroy(SeaChannel* ch);
+
+/* Forward declaration for Slack channel create */
+extern SeaChannel* sea_channel_slack_create(const char* webhook_url);
+extern void sea_channel_slack_destroy(SeaChannel* ch);
 
 static void* gateway_agent_thread(void* arg) {
     (void)arg;
@@ -1684,6 +1822,18 @@ static int run_gateway(const char* tg_token, i64 tg_chat_id) {
         s_tg_channel_ptr = sea_channel_telegram_create(tg_token, tg_chat_id);
         if (s_tg_channel_ptr) {
             sea_channel_manager_register(&s_chan_mgr, s_tg_channel_ptr);
+        }
+    }
+
+    /* Register Slack channel if webhook URL is configured */
+    {
+        const char* slack_url = getenv("SLACK_WEBHOOK_URL");
+        if (slack_url && *slack_url) {
+            SeaChannel* slack_ch = sea_channel_slack_create(slack_url);
+            if (slack_ch) {
+                sea_channel_manager_register(&s_chan_mgr, slack_ch);
+                SEA_LOG_INFO("GATEWAY", "Slack channel registered (webhook)");
+            }
         }
     }
 
@@ -2297,6 +2447,21 @@ int main(int argc, char** argv) {
 
     SEA_LOG_INFO("SHIELD", "Grammar Filter: ACTIVE.");
 
+    /* Start HTTP API server if configured */
+    {
+        const char* api_port_str = getenv("SEA_API_PORT");
+        u16 api_port = api_port_str ? (u16)atoi(api_port_str) : 0;
+        if (api_port > 0 || s_gateway_mode) {
+            SeaApiConfig api_cfg = {
+                .port = api_port > 0 ? api_port : 8899,
+                .agent_cfg = &s_agent_cfg,
+            };
+            if (sea_api_start(&api_cfg) == 0) {
+                SEA_LOG_INFO("STATUS", "HTTP API server on port %u", api_cfg.port);
+            }
+        }
+    }
+
     int ret = 0;
 
     if (s_gateway_mode) {
@@ -2359,6 +2524,7 @@ int main(int argc, char** argv) {
     printf("\n");
     SEA_LOG_INFO("SYSTEM", "Shutting down...");
     sea_proxy_stop(); /* Stop LLM proxy if running (no-op if not started) */
+    sea_api_stop();   /* Stop HTTP API server if running */
     if (s_graph) { sea_graph_destroy(s_graph); s_graph = NULL; }
     if (s_mesh) { sea_mesh_destroy(s_mesh); s_mesh = NULL; }
     if (s_usage) { sea_usage_save(s_usage); s_usage = NULL; }
