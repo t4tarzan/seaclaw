@@ -50,16 +50,28 @@ else
   $(info [BUILD] Architecture: generic (portable C))
 endif
 
+# Readline auto-detection (optional, graceful fallback to fgets)
+HAVE_READLINE := $(shell echo '\#include <readline/readline.h>' | $(CC) -x c -E - >/dev/null 2>&1 && echo 1 || echo 0)
+ifeq ($(HAVE_READLINE),1)
+  READLINE_FLAGS := -DHAVE_READLINE
+  READLINE_LIBS  := -lreadline
+  $(info [BUILD] Readline: enabled)
+else
+  READLINE_FLAGS :=
+  READLINE_LIBS  :=
+  $(info [BUILD] Readline: disabled (install libreadline-dev for arrow keys/history))
+endif
+
 # Build modes
-CFLAGS_DEBUG   := $(CFLAGS_BASE) $(ARCH_FLAGS) -O0 -g -DDEBUG -fsanitize=address,undefined
-CFLAGS_RELEASE := $(CFLAGS_BASE) $(ARCH_FLAGS) -O3 -march=native -flto \
+CFLAGS_DEBUG   := $(CFLAGS_BASE) $(ARCH_FLAGS) $(READLINE_FLAGS) -O0 -g -DDEBUG -fsanitize=address,undefined
+CFLAGS_RELEASE := $(CFLAGS_BASE) $(ARCH_FLAGS) $(READLINE_FLAGS) -O3 -march=native -flto \
                   -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE
 
 # Default to debug for development
 CFLAGS := $(CFLAGS_DEBUG)
 
 # Linker
-LDFLAGS := -lm -lcurl -lsqlite3 -lpthread
+LDFLAGS := -lm -lcurl -lsqlite3 -lpthread $(READLINE_LIBS)
 LDFLAGS_DEBUG := -fsanitize=address,undefined
 LDFLAGS_RELEASE := -flto -Wl,--as-needed -pie
 

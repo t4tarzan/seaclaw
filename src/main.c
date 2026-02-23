@@ -45,6 +45,11 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
+#ifdef HAVE_READLINE
+#include <readline/readline.h>
+#include <readline/history.h>
+#endif
+
 /* ── Constants ────────────────────────────────────────────── */
 
 #define ARENA_SIZE       (16 * 1024 * 1024)   /* 16 MB */
@@ -160,6 +165,159 @@ static SeaLlmProvider parse_provider(const char* name) {
     return SEA_LLM_OPENAI;
 }
 
+/* ── Streaming callback for TUI ───────────────────────────── */
+
+static bool tui_stream_cb(const char* chunk, u32 chunk_len, void* user_data) {
+    (void)user_data;
+    if (chunk && chunk_len > 0) {
+        fwrite(chunk, 1, chunk_len, stdout);
+        fflush(stdout);
+    }
+    return true; /* continue streaming */
+}
+
+/* ── Provider name from enum ─────────────────────────────── */
+
+static const char* provider_name(SeaLlmProvider p) {
+    switch (p) {
+        case SEA_LLM_OPENAI:     return "openai";
+        case SEA_LLM_ANTHROPIC:  return "anthropic";
+        case SEA_LLM_GEMINI:     return "gemini";
+        case SEA_LLM_OPENROUTER: return "openrouter";
+        case SEA_LLM_LOCAL:      return "local";
+        case SEA_LLM_ZAI:        return "zai";
+    }
+    return "unknown";
+}
+
+/* ── TUI: /model ─────────────────────────────────────────── */
+
+static void cmd_model(const char* input) {
+    const char* rest = input + 6; /* skip "/model" */
+    while (*rest == ' ') rest++;
+    if (*rest == '\0') {
+        printf("\n  \033[1mCurrent model:\033[0m %s\n", s_agent_cfg.model ? s_agent_cfg.model : "(none)");
+        printf("  Usage: /model <model_name>\n");
+        printf("  Examples: /model gpt-4o  /model claude-sonnet-4-20250514  /model gemini-2.5-flash\n\n");
+        return;
+    }
+    sea_agent_set_model(&s_agent_cfg, rest);
+    printf("  \033[32m✓\033[0m Model set to: %s\n", rest);
+}
+
+/* ── TUI: /provider ──────────────────────────────────────── */
+
+static void cmd_provider(const char* input) {
+    const char* rest = input + 9; /* skip "/provider" */
+    while (*rest == ' ') rest++;
+    if (*rest == '\0') {
+        printf("\n  \033[1mCurrent provider:\033[0m %s\n", provider_name(s_agent_cfg.provider));
+        printf("  \033[1mModel:\033[0m           %s\n", s_agent_cfg.model ? s_agent_cfg.model : "(default)");
+        printf("  \033[1mAPI URL:\033[0m         %s\n", s_agent_cfg.api_url ? s_agent_cfg.api_url : "(default)");
+        printf("  \033[1mAPI Key:\033[0m         %s\n", (s_agent_cfg.api_key && *s_agent_cfg.api_key) ? "\033[32mset\033[0m" : "\033[31mmissing\033[0m");
+        printf("  Usage: /provider <name> [api_key]\n");
+        printf("  Names: openai, anthropic, gemini, openrouter, local, zai\n\n");
+        return;
+    }
+    /* Parse: /provider <name> [key] */
+    char prov_name[32] = {0};
+    const char* key = NULL;
+    u32 i = 0;
+    while (rest[i] && rest[i] != ' ' && i < sizeof(prov_name) - 1) {
+        prov_name[i] = rest[i]; i++;
+    }
+    prov_name[i] = '\0';
+    if (rest[i] == ' ') {
+        key = rest + i + 1;
+        while (*key == ' ') key++;
+        if (*key == '\0') key = NULL;
+    }
+    SeaLlmProvider prov = parse_provider(prov_name);
+    sea_agent_set_provider(&s_agent_cfg, prov, key, NULL);
+    printf("  \033[32m✓\033[0m Provider: %s, Model: %s\n", prov_name, s_agent_cfg.model);
+    if (key) printf("  \033[32m✓\033[0m API key updated\n");
+}
+
+/* ── TUI: /config ────────────────────────────────────────── */
+
+static void cmd_config(void) {
+    printf("\n  \033[1mSea-Claw Configuration\033[0m\n");
+    printf("  ════════════════════════════════════════\n\n");
+    printf("  \033[1mLLM:\033[0m\n");
+    printf("    provider:    %s\n", provider_name(s_agent_cfg.provider));
+    printf("    model:       %s\n", s_agent_cfg.model ? s_agent_cfg.model : "(default)");
+    printf("    api_url:     %s\n", s_agent_cfg.api_url ? s_agent_cfg.api_url : "(default)");
+    printf("    api_key:     %s\n", (s_agent_cfg.api_key && *s_agent_cfg.api_key) ? "\033[32m✓ set\033[0m" : "\033[31m✗ missing\033[0m");
+    printf("    max_tokens:  %u\n", s_agent_cfg.max_tokens);
+    printf("    temperature: %.1f\n", s_agent_cfg.temperature);
+    printf("    think_level: %s\n", sea_agent_think_level_name(s_agent_cfg.think_level));
+    printf("    tool_rounds: %u\n", s_agent_cfg.max_tool_rounds);
+    printf("    streaming:   %s\n", s_agent_cfg.stream_cb ? "\033[32mon\033[0m" : "off");
+    if (s_agent_cfg.fallback_count > 0) {
+        printf("\n  \033[1mFallbacks:\033[0m (%u)\n", s_agent_cfg.fallback_count);
+        for (u32 fi = 0; fi < s_agent_cfg.fallback_count; fi++) {
+            printf("    %u. %s / %s %s\n", fi + 1,
+                   provider_name(s_agent_cfg.fallbacks[fi].provider),
+                   s_agent_cfg.fallbacks[fi].model ? s_agent_cfg.fallbacks[fi].model : "(default)",
+                   (s_agent_cfg.fallbacks[fi].api_key && *s_agent_cfg.fallbacks[fi].api_key) ? "\033[32m✓\033[0m" : "\033[31m✗\033[0m");
+        }
+    }
+    printf("\n  \033[1mSystem:\033[0m\n");
+    printf("    database:    %s\n", s_db ? "\033[32mconnected\033[0m" : "\033[31mnone\033[0m");
+    printf("    tools:       %u registered\n", sea_tools_count());
+    printf("    cron:        %u jobs\n", s_cron ? sea_cron_count(s_cron) : 0);
+    printf("    recall:      %u facts\n", s_recall ? sea_recall_count(s_recall) : 0);
+    printf("    graph:       %u entities\n", s_graph ? sea_graph_entity_count(s_graph) : 0);
+    printf("    auth:        %u tokens\n", s_auth ? s_auth->count : 0);
+    printf("\n  \033[1mRuntime:\033[0m\n");
+    printf("    config_file: %s\n", s_config_path);
+    printf("    db_path:     %s\n", s_db_path);
+#ifdef HAVE_READLINE
+    printf("    readline:    \033[32menabled\033[0m\n");
+#else
+    printf("    readline:    disabled\n");
+#endif
+    printf("\n");
+}
+
+/* ── TUI: /stream ────────────────────────────────────────── */
+
+static void cmd_stream(const char* input) {
+    const char* rest = input + 7; /* skip "/stream" */
+    while (*rest == ' ') rest++;
+    if (strcmp(rest, "on") == 0) {
+        s_agent_cfg.stream_cb = tui_stream_cb;
+        s_agent_cfg.stream_user_data = NULL;
+        printf("  \033[32m✓\033[0m Streaming enabled\n");
+    } else if (strcmp(rest, "off") == 0) {
+        s_agent_cfg.stream_cb = NULL;
+        s_agent_cfg.stream_user_data = NULL;
+        printf("  \033[32m✓\033[0m Streaming disabled\n");
+    } else {
+        printf("  Streaming: %s\n", s_agent_cfg.stream_cb ? "\033[32mon\033[0m" : "off");
+        printf("  Usage: /stream on|off\n");
+    }
+}
+
+/* ── TUI: /think ─────────────────────────────────────────── */
+
+static void cmd_think(const char* input) {
+    const char* rest = input + 6; /* skip "/think" */
+    while (*rest == ' ') rest++;
+    if (strcmp(rest, "off") == 0) sea_agent_set_think_level(&s_agent_cfg, SEA_THINK_OFF);
+    else if (strcmp(rest, "low") == 0) sea_agent_set_think_level(&s_agent_cfg, SEA_THINK_LOW);
+    else if (strcmp(rest, "medium") == 0) sea_agent_set_think_level(&s_agent_cfg, SEA_THINK_MEDIUM);
+    else if (strcmp(rest, "high") == 0) sea_agent_set_think_level(&s_agent_cfg, SEA_THINK_HIGH);
+    else {
+        printf("  Think level: %s\n", sea_agent_think_level_name(s_agent_cfg.think_level));
+        printf("  Usage: /think off|low|medium|high\n");
+        return;
+    }
+    printf("  \033[32m✓\033[0m Think: %s (temp=%.1f, max_tokens=%u)\n",
+           sea_agent_think_level_name(s_agent_cfg.think_level),
+           s_agent_cfg.temperature, s_agent_cfg.max_tokens);
+}
+
 /* ── Command dispatch ─────────────────────────────────────── */
 
 static void cmd_help(void) {
@@ -191,6 +349,12 @@ static void cmd_help(void) {
     printf("    /recall store <c><t> Store fact (category text)\n");
     printf("    /recall forget <id> Forget a fact\n");
     printf("    /mesh              Mesh network status\n");
+    printf("\n  \033[1mLLM Control:\033[0m\n");
+    printf("    /config            Show current configuration\n");
+    printf("    /model [name]      View or change LLM model\n");
+    printf("    /provider [name]   View or change LLM provider\n");
+    printf("    /stream on|off     Toggle token streaming\n");
+    printf("    /think <level>     Set think level (off/low/medium/high)\n");
     printf("\n  \033[1mSeaZero (Agent Zero):\033[0m\n");
     printf("    /agents            List Agent Zero instances\n");
     printf("    /delegate <task>   Delegate task to Agent Zero\n");
@@ -829,6 +993,16 @@ static void dispatch_command(const char* input) {
         cmd_recall(input);
     } else if (strcmp(input, "/mesh") == 0) {
         cmd_mesh();
+    } else if (strcmp(input, "/config") == 0) {
+        cmd_config();
+    } else if (strcmp(input, "/model") == 0 || strncmp(input, "/model ", 7) == 0) {
+        cmd_model(input);
+    } else if (strcmp(input, "/provider") == 0 || strncmp(input, "/provider ", 10) == 0) {
+        cmd_provider(input);
+    } else if (strcmp(input, "/stream") == 0 || strncmp(input, "/stream ", 8) == 0) {
+        cmd_stream(input);
+    } else if (strcmp(input, "/think") == 0 || strncmp(input, "/think ", 7) == 0) {
+        cmd_think(input);
     } else if (strcmp(input, "/clear") == 0) {
         printf("\033[2J\033[H");
         printf("%s\n", BANNER);
@@ -2134,6 +2308,27 @@ int main(int argc, char** argv) {
         SEA_LOG_INFO("STATUS", "Waiting for command... (Type /help)");
         printf("\n");
 
+#ifdef HAVE_READLINE
+        /* Readline: arrow keys, history, Ctrl+R search */
+        rl_bind_key('\t', rl_insert); /* Tab inserts literal tab (no file completion) */
+        using_history();
+
+        char* line;
+        while (s_running && (line = readline("\001\033[1;32m\002> \001\033[0m\002")) != NULL) {
+            /* Trim trailing whitespace */
+            u32 len = (u32)strlen(line);
+            while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r' ||
+                               line[len - 1] == ' ')) {
+                line[--len] = '\0';
+            }
+            if (len == 0) { free(line); continue; }
+
+            add_history(line);
+            dispatch_command(line);
+            free(line);
+        }
+#else
+        /* Fallback: plain fgets (no arrow keys) */
         char input[INPUT_BUF_SIZE];
 
         while (s_running) {
@@ -2153,6 +2348,7 @@ int main(int argc, char** argv) {
 
             dispatch_command(input);
         }
+#endif
     }
 
     /* ── Cleanup ──────────────────────────────────────────── */

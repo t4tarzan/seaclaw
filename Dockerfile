@@ -17,6 +17,7 @@ RUN apt-get update -qq && \
         build-essential \
         libcurl4-openssl-dev \
         libsqlite3-dev \
+        libreadline-dev \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -33,6 +34,7 @@ RUN apt-get update -qq && \
     apt-get install -y -qq --no-install-recommends \
         libcurl4 \
         libsqlite3-0 \
+        libreadline8 \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
