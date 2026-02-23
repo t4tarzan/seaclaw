@@ -39,4 +39,14 @@ SeaError sea_http_post_json_headers(const char* url, SeaSlice json_body,
                                     const char** extra_headers,
                                     SeaArena* arena, SeaHttpResponse* resp);
 
+/* SSE streaming callback: called for each data line. Return false to abort. */
+typedef bool (*SeaHttpStreamCb)(const char* data, u32 data_len, void* user_data);
+
+/* HTTP POST with SSE streaming — calls stream_cb for each `data:` line.
+ * Also accumulates full response body in resp for final parsing. */
+SeaError sea_http_post_stream(const char* url, SeaSlice json_body,
+                               const char** extra_headers,
+                               SeaHttpStreamCb stream_cb, void* cb_data,
+                               SeaArena* arena, SeaHttpResponse* resp);
+
 #endif /* SEA_HTTP_H */
