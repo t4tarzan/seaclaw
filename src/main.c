@@ -362,6 +362,7 @@ static void cmd_help(void) {
     printf("    /sztasks           Show delegated task history\n");
     printf("    /usage             LLM token usage breakdown\n");
     printf("    /audit             Recent security events\n");
+    printf("    /utests [sprint]   Usability test results (E13-E17)\n");
     printf("\n");
 }
 
@@ -831,6 +832,62 @@ static void cmd_recall(const char* input) {
     printf("\n");
 }
 
+/* ── TUI: /utests ────────────────────────────────────────── */
+
+static void cmd_utests(const char* input) {
+    if (!s_db) { printf("  No database loaded.\n"); return; }
+
+    const char* sprint_filter = NULL;
+    if (strlen(input) > 7) {
+        const char* rest = input + 7;
+        while (*rest == ' ') rest++;
+        if (*rest) sprint_filter = rest;
+    }
+
+    /* Summary */
+    i32 passed = 0, failed = 0, pending = 0;
+    sea_db_utest_summary(s_db, sprint_filter, &passed, &failed, &pending);
+    i32 total = passed + failed + pending;
+
+    printf("\n  \033[1mUsability Tests%s%s (%d total):\033[0m\n",
+           sprint_filter ? " [" : "", sprint_filter ? sprint_filter : "",
+           total);
+    if (sprint_filter) printf("  ");
+    if (total > 0) {
+        printf("    \033[32m%d passed\033[0m  \033[31m%d failed\033[0m  \033[33m%d pending\033[0m\n",
+               passed, failed, pending);
+    }
+
+    /* List recent tests */
+    SeaDbUTest tests[32];
+    i32 count = sea_db_utest_list(s_db, sprint_filter, tests, 32, &s_request_arena);
+    if (count == 0) {
+        printf("    (no tests recorded yet)\n");
+    }
+    for (i32 i = 0; i < count; i++) {
+        const char* icon = "\033[33m○\033[0m";
+        if (tests[i].status && strcmp(tests[i].status, "passed") == 0)
+            icon = "\033[32m✓\033[0m";
+        else if (tests[i].status && strcmp(tests[i].status, "failed") == 0)
+            icon = "\033[31m✗\033[0m";
+        else if (tests[i].status && strcmp(tests[i].status, "running") == 0)
+            icon = "\033[33m►\033[0m";
+
+        printf("    %s [%s] %s — %s",
+               icon,
+               tests[i].sprint ? tests[i].sprint : "?",
+               tests[i].test_name ? tests[i].test_name : "?",
+               tests[i].category ? tests[i].category : "?");
+        if (tests[i].latency_ms > 0)
+            printf(" (%dms)", tests[i].latency_ms);
+        if (tests[i].error)
+            printf(" \033[31m%s\033[0m", tests[i].error);
+        printf("\n");
+    }
+    printf("\n");
+    sea_arena_reset(&s_request_arena);
+}
+
 /* ── TUI: /mesh ──────────────────────────────────────────── */
 
 static void cmd_mesh(void) {
@@ -1004,6 +1061,8 @@ static void dispatch_command(const char* input) {
         cmd_stream(input);
     } else if (strcmp(input, "/think") == 0 || strncmp(input, "/think ", 7) == 0) {
         cmd_think(input);
+    } else if (strcmp(input, "/utests") == 0 || strncmp(input, "/utests ", 8) == 0) {
+        cmd_utests(input);
     } else if (strcmp(input, "/clear") == 0) {
         printf("\033[2J\033[H");
         printf("%s\n", BANNER);
