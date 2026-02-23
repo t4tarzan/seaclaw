@@ -83,10 +83,13 @@ var NAV_DATA = [
     { id: "uc-multi-agent", label: "Multi-Agent Workflows" }
   ]},
   { group: "edge", title: "Edge Cases & FAQ", items: [
-    { id: "edge-memory", label: "Memory Limits" },
-    { id: "edge-security", label: "Security Edge Cases" },
-    { id: "edge-network", label: "Network Failures" },
-    { id: "edge-concurrency", label: "Concurrency" },
+    { id: "edge-memory", label: "Edge: Memory Limits" },
+    { id: "edge-security", label: "Edge: Security" },
+    { id: "edge-network", label: "Edge: Network Failures" },
+    { id: "edge-concurrency", label: "Edge: Concurrency" },
+    { id: "edge-power", label: "Edge: Power Loss & Crashes" },
+    { id: "edge-llm-garbage", label: "Edge: LLM Returns Garbage" },
+    { id: "edge-large-files", label: "Edge: Large Files" },
     { id: "faq", label: "Frequently Asked Questions" }
   ]},
   { group: "dev", title: "Developer Guide", items: [

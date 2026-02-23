@@ -1,9 +1,11 @@
-// Part 4: Core Modules + Intelligence Layer
+// Part 4: Core Modules + Intelligence Layer (enhanced with plain-English intros)
 
 var CONTENT_MODULES = `
 <section class="doc-section" id="mod-types">
 <h2>sea_types &mdash; Foundation Types</h2>
 <p><span class="badge badge-blue">Header</span> <code>include/seaclaw/sea_types.h</code></p>
+<p>Every building has a foundation. <code>sea_types</code> is Sea-Claw&rsquo;s foundation &mdash; it defines the basic building blocks that every other module uses. Think of it as the <strong>alphabet</strong> of the codebase: before you can write words (modules), you need letters (types).</p>
+<p>The most important idea here is <strong>fixed-width types</strong>. In C, an <code>int</code> can be different sizes on different computers (like how a &ldquo;cup&rdquo; means different sizes at different coffee shops). Fixed-width types are like standardized measuring cups &mdash; <code>u32</code> is <em>always</em> 32 bits, everywhere, every time. This prevents subtle bugs when Sea-Claw runs on different hardware.</p>
 <h3>Fixed-Width Types</h3>
 <pre>typedef uint8_t  u8;    typedef int8_t   i8;
 typedef uint16_t u16;   typedef int16_t  i16;
@@ -37,6 +39,8 @@ const char* sea_error_str(SeaError err);
 <section class="doc-section" id="mod-arena">
 <h2>sea_arena &mdash; Memory Allocator</h2>
 <p><span class="badge badge-blue">Header</span> <code>include/seaclaw/sea_arena.h</code> <span class="badge badge-green">9 tests</span></p>
+<p>This is Sea-Claw&rsquo;s secret weapon. Most programs ask the operating system for memory one piece at a time (like ordering dishes one by one at a restaurant). Sea-Claw grabs <strong>one big block</strong> upfront (like reserving the whole buffet table) and hands out pieces from it.</p>
+<p>The magic: when you&rsquo;re done, you don&rsquo;t return each piece individually. You just <strong>reset the whole block</strong> in one instant operation (11 nanoseconds). This makes memory leaks <em>physically impossible</em> &mdash; there&rsquo;s nothing to forget to free. It&rsquo;s like a whiteboard: write whatever you want, then erase the whole thing in one swipe.</p>
 <h3>API</h3>
 <pre>SeaError sea_arena_create(SeaArena* arena, u64 size);
 void     sea_arena_destroy(SeaArena* arena);
@@ -70,6 +74,7 @@ sea_arena_destroy(&amp;arena);</pre>
 <section class="doc-section" id="mod-log">
 <h2>sea_log &mdash; Structured Logging</h2>
 <p><span class="badge badge-blue">Header</span> <code>include/seaclaw/sea_log.h</code></p>
+<p>Logging is Sea-Claw&rsquo;s <strong>diary</strong>. Every important event gets written down with a timestamp, a tag (which module is speaking), and a severity level. When something goes wrong, you read the diary to figure out what happened. It&rsquo;s like a flight recorder (black box) for your AI agent.</p>
 <pre>// Output: T+&lt;ms&gt; [&lt;TAG&gt;] &lt;LEVEL&gt;: &lt;message&gt;
 SEA_LOG_INFO("HANDS", "Tool registry loaded: %u tools", 63);
 // -> T+0ms [HANDS] INF: Tool registry loaded: 63 tools</pre>
@@ -78,7 +83,7 @@ SEA_LOG_INFO("HANDS", "Tool registry loaded: %u tools", 63);
 <section class="doc-section" id="mod-json">
 <h2>sea_json &mdash; Zero-Copy JSON Parser</h2>
 <p><span class="badge badge-blue">Header</span> <code>include/seaclaw/sea_json.h</code> <span class="badge badge-green">17 tests</span></p>
-<p>Values are <code>SeaSlice</code> pointers into original input. No malloc, no copies. 5.4&micro;s per parse.</p>
+<p><span class="glossary" data-def="JavaScript Object Notation &mdash; a way to structure data as labeled fields. Like a form with named boxes.">JSON</span> is how computers exchange structured data &mdash; like a form with labeled fields. Every LLM API speaks JSON. Sea-Claw&rsquo;s parser is special because it&rsquo;s <strong>zero-copy</strong>: instead of photocopying every page of a book, it just points to the original pages. This means no extra memory is used and parsing takes only 5.4 microseconds.</p>
 <pre>SeaError sea_json_parse(SeaSlice input, SeaArena* arena, SeaJsonValue* out);
 SeaSlice sea_json_get_string(const SeaJsonValue* obj, const char* key);
 f64      sea_json_get_number(const SeaJsonValue* obj, const char* key, f64 fallback);
@@ -95,7 +100,7 @@ f64 tools = sea_json_get_number(&amp;root, "tools", 0);  // 63.0</pre>
 <section class="doc-section" id="mod-shield">
 <h2>sea_shield &mdash; Grammar Filter</h2>
 <p><span class="badge badge-blue">Header</span> <code>include/seaclaw/sea_shield.h</code> <span class="badge badge-green">19 tests</span></p>
-<p>Byte-level validation. Rejects injection in &lt;1&micro;s.</p>
+<p>The Grammar Shield is Sea-Claw&rsquo;s <strong>immune system</strong>. Just like your body checks every molecule that enters for threats, the Shield checks every <em>byte</em> of input against a set of allowed character patterns. If something doesn&rsquo;t belong (like a shell command hidden inside a chat message), it&rsquo;s rejected instantly &mdash; in less than 1 microsecond. That&rsquo;s faster than a hummingbird flaps its wings once.</p>
 <h3>10 Grammar Types</h3>
 <pre>SEA_GRAMMAR_SAFE_TEXT   // Printable ASCII
 SEA_GRAMMAR_NUMERIC     // Digits, dot, minus
@@ -120,6 +125,7 @@ if (!sea_shield_check(input, SEA_GRAMMAR_SAFE_TEXT)) {
 <section class="doc-section" id="mod-http">
 <h2>sea_http &mdash; HTTP Client</h2>
 <p><span class="badge badge-blue">Header</span> <code>include/seaclaw/sea_http.h</code></p>
+<p>This is Sea-Claw&rsquo;s <strong>telephone</strong> &mdash; how it calls the outside world. Every time Sea-Claw talks to an LLM API, fetches a webpage, or sends a Telegram message, it uses <code>sea_http</code>. Built on top of <span class="glossary" data-def="A battle-tested C library for making HTTP requests. Used by billions of devices worldwide, including cars, TVs, and phones.">libcurl</span>, which powers billions of devices worldwide.</p>
 <pre>SeaError sea_http_get(const char* url, SeaArena* arena, SeaHttpResponse* resp);
 SeaError sea_http_post_json(const char* url, SeaSlice body, SeaArena* arena, SeaHttpResponse* resp);
 SeaError sea_http_post_json_auth(const char* url, SeaSlice body, const char* auth,
@@ -134,7 +140,7 @@ SeaError sea_http_post_stream(const char* url, SeaSlice body,
 <section class="doc-section" id="mod-db">
 <h2>sea_db &mdash; Database (SQLite)</h2>
 <p><span class="badge badge-blue">Header</span> <code>include/seaclaw/sea_db.h</code> <span class="badge badge-green">10 tests</span></p>
-<p>Single file, WAL mode, zero-config. Auto-creates tables on first open.</p>
+<p>Sea-Claw&rsquo;s <strong>filing cabinet</strong>. Everything that needs to survive a restart goes here: chat history, tasks, configuration, audit trail, and SeaZero agent data. It uses <span class="glossary" data-def="A tiny database engine that stores everything in a single file. No server needed. Used by Firefox, Android, and billions of devices.">SQLite</span> &mdash; a single file on disk, no database server needed. When Sea-Claw starts, it opens <code>seaclaw.db</code>. When it stops, the file stays. All your data is always there.</p>
 <h3>Tables</h3>
 <ul>
   <li><code>trajectory</code> &mdash; Audit log</li>
@@ -157,14 +163,15 @@ SeaError sea_db_chat_log(SeaDb* db, i64 chat_id, const char* role, const char* c
 <section class="doc-section" id="mod-config">
 <h2>sea_config &mdash; Configuration</h2>
 <p><span class="badge badge-blue">Header</span> <code>include/seaclaw/sea_config.h</code> <span class="badge badge-green">6 tests</span></p>
-<p>Parses JSON config file. Environment variables override config values for secrets.</p>
+<p>Sea-Claw&rsquo;s <strong>settings panel</strong>. It reads your preferences from <code>config.json</code> (which AI model to use, how creative it should be) and secrets from <code>.env</code> (API keys, bot tokens). Think of <code>config.json</code> as your public profile and <code>.env</code> as your private keychain. Environment variables always override the JSON file, so you can change settings without editing files.</p>
 <pre>SeaError sea_config_load(SeaConfig* cfg, const char* path, SeaArena* arena);</pre>
 </section>
 
 <section class="doc-section" id="mod-agent">
 <h2>sea_agent &mdash; LLM Brain</h2>
 <p><span class="badge badge-blue">Header</span> <code>include/seaclaw/sea_agent.h</code></p>
-<p>The agent loop: takes user input, builds prompt with tool descriptions, calls LLM, parses tool calls, executes them, loops until final answer.</p>
+<p>This is the <strong>brain</strong> of Sea-Claw &mdash; the most important module. It takes your question, packages it with context (conversation history, tool descriptions, system instructions), sends it to a cloud <span class="glossary" data-def="Large Language Model &mdash; an AI that understands and generates human language. Examples: GPT-4, Claude, Gemini.">LLM</span>, and interprets the response. If the LLM wants to use a tool, the agent executes it and loops back. It&rsquo;s like a project manager who talks to the client (you), consults the expert (LLM), and delegates work to specialists (tools).</p>
+<p>The agent also has a <strong>fallback chain</strong>: if the primary LLM is down, it automatically tries the next one. Like having backup phone numbers for your most important contacts.</p>
 <h3>Provider Chain</h3>
 <pre>Primary: OpenRouter (moonshotai/kimi-k2.5)
     |  (on failure)
@@ -196,7 +203,7 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
 <section class="doc-section" id="mod-tools">
 <h2>sea_tools &mdash; Tool Registry</h2>
 <p><span class="badge badge-blue">Header</span> <code>include/seaclaw/sea_tools.h</code></p>
-<p>Compile-time registry. AI can only call tools wired at build time.</p>
+<p>The tool registry is Sea-Claw&rsquo;s <strong>vending machine</strong>. It has exactly 63 buttons, each wired to a specific function. The AI can press any button, but it <em>cannot add new buttons</em> or rewire existing ones. This is a critical security feature: even if the AI is tricked by a prompt injection, it can only call tools that were compiled into the binary. No <code>eval()</code>, no <code>exec()</code>, no dynamic code loading.</p>
 <pre>typedef SeaError (*SeaToolFunc)(SeaSlice args, SeaArena* arena, SeaSlice* output);
 
 u32      sea_tools_count(void);
@@ -302,30 +309,30 @@ SeaError tool_example(SeaSlice args, SeaArena* arena, SeaSlice* output) {
 <section class="doc-section" id="mod-memory">
 <h2>sea_memory &mdash; Workspace Memory</h2>
 <p><span class="badge badge-blue">Header</span> <code>include/seaclaw/sea_memory.h</code></p>
-<p>Markdown-file-based persistent memory. The agent reads/writes <code>IDENTITY.md</code>, <code>AGENTS.md</code>, and <code>MEMORY.md</code> in <code>~/.seaclaw/</code>. Gives the AI persistent context across sessions.</p>
+<p>LLMs have no memory between conversations &mdash; every chat starts from zero. <code>sea_memory</code> gives Sea-Claw a <strong>long-term notebook</strong>. It stores important facts, your preferences, and context in Markdown files (<code>IDENTITY.md</code>, <code>AGENTS.md</code>, <code>MEMORY.md</code>) that persist across sessions. When a new conversation starts, the agent reads these files to &ldquo;remember&rdquo; who you are and what you&rsquo;ve been working on. It&rsquo;s like a personal assistant who reviews their notes before each meeting.</p>
 </section>
 
 <section class="doc-section" id="mod-recall">
 <h2>sea_recall &mdash; Fact Index</h2>
 <p><span class="badge badge-blue">Header</span> <code>include/seaclaw/sea_recall.h</code></p>
-<p>In-memory fact index with categories. Store and retrieve facts with keyword search. Budget-limited to 800 tokens for system prompt injection. Persists in DB.</p>
+<p>While <code>sea_memory</code> is the notebook, <code>sea_recall</code> is the <strong>index at the back of the book</strong>. It stores categorized facts (like &ldquo;User prefers dark mode&rdquo; or &ldquo;Server IP is 10.0.0.5&rdquo;) and retrieves them by keyword. The recall system is budget-limited to 800 tokens &mdash; it picks the most relevant facts to inject into the system prompt, so the AI always has the right context without wasting token budget.</p>
 </section>
 
 <section class="doc-section" id="mod-skill">
 <h2>sea_skill &mdash; Learned Skills</h2>
 <p><span class="badge badge-blue">Header</span> <code>include/seaclaw/sea_skill.h</code></p>
-<p>Registry of learned multi-step procedures. Save a sequence of tool calls as a "skill" and replay later. Persists in DB and <code>~/.seaclaw/skills/</code>.</p>
+<p>Skills are Sea-Claw&rsquo;s <strong>muscle memory</strong>. When you teach Sea-Claw a multi-step procedure (like &ldquo;check all servers, compare disk usage, send a summary to Telegram&rdquo;), it can save that as a reusable skill. Next time, instead of figuring it out from scratch, it replays the learned steps. Like teaching someone to ride a bike &mdash; once learned, it becomes automatic.</p>
 </section>
 
 <section class="doc-section" id="mod-graph">
 <h2>sea_graph &mdash; Knowledge Graph</h2>
 <p><span class="badge badge-blue">Header</span> <code>include/seaclaw/sea_graph.h</code></p>
-<p>In-memory entity-relationship graph. Stores entities with types/properties and relationships. Supports queries like "find all entities related to X."</p>
+<p>The knowledge graph is Sea-Claw&rsquo;s <strong>mind map</strong>. It stores entities (people, projects, servers) and the relationships between them (Alice <em>manages</em> Project X, Server A <em>hosts</em> Database B). You can ask questions like &ldquo;What is connected to Server A?&rdquo; and get all related entities. It&rsquo;s like a detective&rsquo;s evidence board with strings connecting the clues.</p>
 </section>
 
 <section class="doc-section" id="sse-streaming">
 <h2>SSE Streaming (E13)</h2>
-<p>Real-time token-by-token output from LLM APIs using Server-Sent Events.</p>
+<p>Without streaming, you send a question and wait... and wait... until the entire answer arrives at once. With <span class="glossary" data-def="Server-Sent Events &mdash; a way for a server to push data to a client in real-time, one piece at a time.">SSE</span> streaming, you see the answer being <strong>typed out in real-time</strong>, word by word, just like watching someone type in a chat. This makes Sea-Claw feel much more responsive, especially for long answers.</p>
 <ol>
   <li>Agent injects <code>"stream":true</code> into request JSON</li>
   <li><code>sea_http_post_stream()</code> opens streaming HTTP connection</li>

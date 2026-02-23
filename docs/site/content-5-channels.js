@@ -240,36 +240,103 @@ i32          sea_a2a_discover(const char* url, SeaA2aPeer* out, i32 max, SeaAren
 
 <section class="doc-section" id="uc-devops">
 <h2>Use Case: DevOps Automation</h2>
-<p>Deploy Sea-Claw on your server. Monitor via Telegram. Get alerts, run diagnostics, and fix issues from your phone.</p>
-<pre>/status              # System health from your phone
-/shell df -h         # Check disk usage remotely
-/delegate "Check all SSL certificates and report expiring ones"</pre>
+<p>Deploy Sea-Claw on your server. Monitor via Telegram. Get alerts, run diagnostics, and fix issues &mdash; all from your phone, anywhere in the world.</p>
+
+<h3>Scenario: 2 AM Server Alert</h3>
+<div class="convo">
+  <div class="convo-msg"><div class="convo-avatar user">Y</div><div class="convo-bubble">My monitoring says server-3 is slow. What&rsquo;s going on?</div></div>
+  <div class="convo-msg"><div class="convo-avatar bot">S</div><div class="convo-bubble">Checking server-3...<br><br>CPU: 94% (high)<br>Top process: <code>postgres</code> using 89% CPU<br>Disk: 92% full &mdash; <code>/var/log</code> is 4.2 GB<br><br>The database is thrashing because the disk is almost full. I recommend:<br>1. Rotate and compress old logs<br>2. Run <code>VACUUM</code> on PostgreSQL<br><br>Want me to clean up the logs now?</div></div>
+  <div class="convo-msg"><div class="convo-avatar user">Y</div><div class="convo-bubble">Yes, clean up logs older than 7 days</div></div>
+  <div class="convo-msg"><div class="convo-avatar bot">S</div><div class="convo-bubble">Done. Removed 3.8 GB of old logs. Disk now at 54%. CPU already dropping &mdash; currently 23%.</div></div>
+</div>
+
+<h3>Scenario: SSL Certificate Check</h3>
+<div class="convo">
+  <div class="convo-msg"><div class="convo-avatar user">Y</div><div class="convo-bubble">Check SSL certs for all my domains and tell me if any expire within 30 days</div></div>
+  <div class="convo-msg"><div class="convo-avatar bot">S</div><div class="convo-bubble">Checked 5 domains:<br><br>example.com &mdash; expires in 142 days<br>api.example.com &mdash; expires in 142 days<br>staging.example.com &mdash; <strong>expires in 12 days</strong><br>docs.example.com &mdash; expires in 89 days<br>blog.example.com &mdash; expires in 89 days<br><br>Action needed: <code>staging.example.com</code> expires in 12 days. Want me to set up a cron job to remind you in 5 days?</div></div>
+</div>
 </section>
 
 <section class="doc-section" id="uc-iot">
 <h2>Use Case: IoT &amp; Raspberry Pi</h2>
-<p>Run Sea-Claw on a Pi as a 24/7 home automation hub. Control smart devices, monitor sensors, and get alerts via Telegram.</p>
-<pre># Example: temperature monitoring
-&gt; Read /sys/class/thermal/thermal_zone0/temp and convert to Celsius
-&gt; If above 70C, send me a Telegram alert</pre>
+<p>Run Sea-Claw on a Pi as a 24/7 home automation hub. Control smart devices, monitor sensors, and get alerts via Telegram &mdash; all for ~$5/year in electricity.</p>
+
+<h3>Scenario: Home Temperature Monitoring</h3>
+<div class="convo">
+  <div class="convo-msg"><div class="convo-avatar user">Y</div><div class="convo-bubble">What&rsquo;s the CPU temperature on the Pi?</div></div>
+  <div class="convo-msg"><div class="convo-avatar bot">S</div><div class="convo-bubble">CPU temperature: 52.3&deg;C (normal range). Ambient: ~24&deg;C based on offset. The Pi is running cool.</div></div>
+  <div class="convo-msg"><div class="convo-avatar user">Y</div><div class="convo-bubble">Set up a cron job to alert me if it goes above 70C</div></div>
+  <div class="convo-msg"><div class="convo-avatar bot">S</div><div class="convo-bubble">Created cron job: every 15 minutes, check CPU temp. If &gt;70&deg;C, send Telegram alert. Job ID: cron-7.<br><br>You can manage it with <code>/cron list</code> or <code>/cron delete 7</code>.</div></div>
+</div>
+
+<h3>Scenario: Smart Home Control</h3>
+<div class="convo">
+  <div class="convo-msg"><div class="convo-avatar user">Y</div><div class="convo-bubble">Turn on the garden lights</div></div>
+  <div class="convo-msg"><div class="convo-avatar bot">S</div><div class="convo-bubble">Sent HIGH signal to GPIO pin 17. Garden lights are ON.<br>Want me to set a timer to turn them off at 11 PM?</div></div>
+</div>
 </section>
 
 <section class="doc-section" id="uc-enterprise">
 <h2>Use Case: Enterprise Deployment</h2>
-<p>On-premise AI with full audit trail. Every action logged to SQLite. Token authentication for API access. PII detection before cloud LLM calls. Mesh networking for multi-node deployments.</p>
+<p>On-premise AI with full audit trail. Every action logged to SQLite. Token authentication for API access. PII detection before cloud LLM calls.</p>
+
+<h3>Scenario: Compliance Audit</h3>
+<div class="convo">
+  <div class="convo-msg"><div class="convo-avatar user">Y</div><div class="convo-bubble">Show me all AI actions from the last 24 hours</div></div>
+  <div class="convo-msg"><div class="convo-avatar bot">S</div><div class="convo-bubble">Last 24 hours: 47 actions logged.<br><br>Tools used: file_read (12), shell_exec (8), web_search (6), task_manage (5), db_query (4), others (12)<br>LLM tokens: 24,830 (OpenRouter: 18,200, Gemini fallback: 6,630)<br>Security events: 0 rejections, 0 injection attempts<br>PII detections: 2 (redacted before LLM call)<br><br>Full audit trail available at: <code>SELECT * FROM trajectory WHERE timestamp &gt; datetime('now', '-1 day')</code></div></div>
+</div>
+
+<div class="callout info">
+<div class="callout-title">Enterprise Features</div>
+<ul>
+  <li><strong>Audit trail</strong> &mdash; Every action logged with timestamp, tool name, input/output, and user ID</li>
+  <li><strong>PII filter</strong> &mdash; Detects emails, phone numbers, SSNs before sending to cloud LLMs</li>
+  <li><strong>Token auth</strong> &mdash; HTTP API requires bearer token for access</li>
+  <li><strong>Mesh networking</strong> &mdash; Connect multiple Sea-Claw instances across departments</li>
+  <li><strong>Usage tracking</strong> &mdash; Per-provider, per-day token usage with cost estimates</li>
+</ul>
+</div>
 </section>
 
 <section class="doc-section" id="uc-education">
 <h2>Use Case: Education &amp; Research</h2>
-<p>Clean C11 codebase for learning systems programming. Each module is self-contained with clear APIs. 26 test suites demonstrate usage patterns. Zero external dependencies beyond libc, libcurl, SQLite.</p>
+<p>Sea-Claw is an excellent learning resource for systems programming. The codebase is clean, well-structured, and demonstrates real-world patterns.</p>
+
+<h3>What Students Can Learn</h3>
+<table>
+<tr><th>Topic</th><th>Sea-Claw Module</th><th>What It Teaches</th></tr>
+<tr><td>Memory management</td><td><code>sea_arena</code></td><td>Arena allocation vs. malloc/free, bump pointers, memory-mapped files</td></tr>
+<tr><td>Parsing</td><td><code>sea_json</code></td><td>Zero-copy parsing, recursive descent, SeaSlice views</td></tr>
+<tr><td>Networking</td><td><code>sea_http</code></td><td>HTTP client with libcurl, SSL, streaming (SSE)</td></tr>
+<tr><td>Databases</td><td><code>sea_db</code></td><td>SQLite integration, schema migration, WAL mode</td></tr>
+<tr><td>Security</td><td><code>sea_shield</code></td><td>Input validation, injection detection, grammar-based filtering</td></tr>
+<tr><td>Concurrency</td><td><code>sea_bus</code></td><td>Thread-safe message passing, mutex-protected queues</td></tr>
+<tr><td>Testing</td><td><code>tests/</code></td><td>26 test suites with assertion macros, edge case coverage</td></tr>
+</table>
+
+<h3>Scenario: Data Processing for Research</h3>
+<div class="convo">
+  <div class="convo-msg"><div class="convo-avatar user">Y</div><div class="convo-bubble">I have 200 CSV files in /data/experiment/. Parse each one, compute the mean and standard deviation of column 3, and create a summary CSV.</div></div>
+  <div class="convo-msg"><div class="convo-avatar bot">S</div><div class="convo-bubble">Processing 200 files...<br><br>Done. Summary saved to <code>/data/experiment/summary.csv</code>.<br>Overall mean: 42.7 &plusmn; 3.2<br>Range: 31.4 to 58.9<br>3 files had missing values in column 3 (skipped those rows).</div></div>
+</div>
 </section>
 
 <section class="doc-section" id="uc-multi-agent">
 <h2>Use Case: Multi-Agent Workflows</h2>
-<p>Use SeaZero to orchestrate complex tasks across multiple agents. Sea-Claw delegates research to Agent Zero, code review to another instance, and synthesizes results.</p>
-<pre>/delegate "Research competitor pricing and create a comparison table"
-/seazero   # Monitor agent status
-/sztasks   # View task history</pre>
+<p>Use <span class="glossary" data-def="Sea-Claw&rsquo;s multi-agent orchestration layer. Delegates tasks to Agent Zero (Python) running in Docker.">SeaZero</span> to orchestrate complex tasks. Sea-Claw stays responsive while Agent Zero does heavy lifting in an isolated Docker container.</p>
+
+<h3>Scenario: Competitive Research</h3>
+<div class="convo">
+  <div class="convo-msg"><div class="convo-avatar user">Y</div><div class="convo-bubble">/delegate Research the top 5 AI coding assistants in 2025, compare features, pricing, and user reviews. Create a detailed report.</div></div>
+  <div class="convo-msg"><div class="convo-avatar bot">S</div><div class="convo-bubble">Delegated to Agent Zero. Task ID: SZ-051.<br>Agent Zero will browse the web, collect data, and compile the report in its Docker workspace.<br><br>I&rsquo;ll notify you when it&rsquo;s done. Meanwhile, I&rsquo;m still available for other tasks.</div></div>
+  <div class="convo-msg"><div class="convo-avatar user">Y</div><div class="convo-bubble">/sztasks</div></div>
+  <div class="convo-msg"><div class="convo-avatar bot">S</div><div class="convo-bubble">SeaZero Tasks:<br>SZ-051 | IN_PROGRESS | &ldquo;Research AI coding assistants&rdquo; | 4 min elapsed<br>SZ-050 | COMPLETED | &ldquo;Rust frameworks comparison&rdquo; | 12 min<br>SZ-049 | COMPLETED | &ldquo;Security audit report&rdquo; | 8 min</div></div>
+</div>
+
+<div class="callout tip">
+<div class="callout-title">Why Multi-Agent?</div>
+<p>Some tasks take minutes (web research, code analysis, report generation). Without multi-agent, Sea-Claw would be blocked during that time. With SeaZero, it delegates the heavy work to Agent Zero and stays responsive for your other questions. It&rsquo;s like a manager who assigns tasks to team members instead of doing everything themselves.</p>
+</div>
 </section>
 
 <section class="doc-section" id="edge-memory">
@@ -302,16 +369,63 @@ i32          sea_a2a_discover(const char* url, SeaA2aPeer* out, i32 max, SeaAren
 <p>A: Each thread gets its own arena. The message bus uses mutex-protected queues. The API server handles one request at a time (sequential accept loop). For high-throughput scenarios, use gateway mode with the bus architecture.</p>
 </section>
 
+<section class="doc-section" id="edge-power">
+<h2>Edge Case: Power Loss &amp; Crashes</h2>
+<p><strong>Q: What if my Pi loses power mid-conversation?</strong></p>
+<p>A: SQLite uses <span class="glossary" data-def="Write-Ahead Logging &mdash; a SQLite feature that writes changes to a separate log file first, then applies them to the database. If power is lost, the log is replayed on restart.">WAL mode</span>, which is crash-safe. Your chat history, tasks, and config survive power loss. The arena memory is volatile (RAM only), so the current in-flight request is lost &mdash; but that&rsquo;s just one message. On restart, Sea-Claw picks up right where it left off.</p>
+<p><strong>Q: What if the database file gets corrupted?</strong></p>
+<p>A: SQLite is extremely resilient (used in aircraft, phones, and browsers). In the rare event of corruption, <code>sqlite3 seaclaw.db ".recover"</code> can salvage data. Sea-Claw also auto-creates a fresh database if the file is missing, so you can always start clean.</p>
+</section>
+
+<section class="doc-section" id="edge-llm-garbage">
+<h2>Edge Case: LLM Returns Garbage</h2>
+<p><strong>Q: What if the LLM returns invalid JSON?</strong></p>
+<p>A: The JSON parser returns <code>SEA_ERR_INVALID_JSON</code>. The agent retries once with a &ldquo;please respond with valid JSON&rdquo; prompt. If it fails again, you get a clear error: &ldquo;LLM returned unparseable response.&rdquo; No crash, no undefined behavior.</p>
+<p><strong>Q: What if the LLM hallucinates a tool that doesn&rsquo;t exist?</strong></p>
+<p>A: The static registry lookup returns <code>SEA_ERR_TOOL_NOT_FOUND</code>. The agent tells the LLM: &ldquo;Tool X does not exist. Available tools are: [list].&rdquo; The LLM usually self-corrects on the next attempt.</p>
+<p><strong>Q: What if the LLM tries to call a tool with wrong arguments?</strong></p>
+<p>A: Each tool validates its own arguments. Invalid args return <code>SEA_ERR_INVALID_INPUT</code> with a descriptive message. The agent feeds this error back to the LLM, which adjusts its call.</p>
+</section>
+
+<section class="doc-section" id="edge-large-files">
+<h2>Edge Case: Large Files &amp; Long Operations</h2>
+<p><strong>Q: Can Sea-Claw read a 500 MB log file?</strong></p>
+<p>A: The <code>file_read</code> tool reads in chunks bounded by the request arena (default 1 MB). For large files, use <code>head_tail</code> (first/last N lines), <code>grep_text</code> (search for patterns), or <code>shell_exec</code> with <code>awk</code>/<code>sed</code>. The AI is smart enough to choose the right approach.</p>
+<p><strong>Q: What if a shell command runs forever?</strong></p>
+<p>A: <code>shell_exec</code> has a configurable timeout (default 30 seconds). If exceeded, the process is killed and <code>SEA_ERR_TIMEOUT</code> is returned. The AI reports: &ldquo;Command timed out after 30 seconds.&rdquo;</p>
+<p><strong>Q: What if I send a very long message?</strong></p>
+<p>A: Messages are bounded by the request arena (1 MB = ~250,000 words). In practice, Telegram limits messages to 4,096 characters. The TUI and HTTP API accept larger inputs but the arena is the hard limit.</p>
+</section>
+
 <section class="doc-section" id="faq">
 <h2>Frequently Asked Questions</h2>
-<h3>General</h3>
-<p><strong>Q: Do I need to know C to use Sea-Claw?</strong><br>A: No. You interact via Telegram, terminal, or HTTP API. C knowledge is only needed to modify or extend Sea-Claw.</p>
-<p><strong>Q: Is Sea-Claw free?</strong><br>A: Yes. The code is open source. You only pay for LLM API usage (many providers have free tiers).</p>
-<p><strong>Q: Can I use it without internet?</strong><br>A: Partially. Local tools work offline. The LLM brain requires internet access to the API provider.</p>
+
+<h3>Getting Started</h3>
+<p><strong>Q: Do I need to know C to use Sea-Claw?</strong><br>A: No. You interact via Telegram, terminal, or HTTP API using natural language. C knowledge is only needed if you want to modify or extend Sea-Claw itself.</p>
+<p><strong>Q: Is Sea-Claw free?</strong><br>A: Yes. The code is open source. You only pay for LLM API usage (many providers have free tiers &mdash; OpenRouter offers several free models).</p>
+<p><strong>Q: Can I use it without internet?</strong><br>A: Partially. All 63 local tools (file operations, shell commands, data processing) work offline. The AI &ldquo;brain&rdquo; needs internet to reach the LLM API. If you run a local LLM (like Ollama), everything works fully offline.</p>
+<p><strong>Q: How long does installation take?</strong><br>A: About 2 minutes. Install dependencies (30 sec), clone repo (10 sec), build (3 sec), configure (1 min). Sea-Claw compiles in ~3 seconds on a modern machine.</p>
+<p><strong>Q: What if I mess up the configuration?</strong><br>A: Sea-Claw has sensible defaults for everything. The only required setting is an LLM API key. If config.json is missing, it uses built-in defaults.</p>
+
+<h3>Security &amp; Privacy</h3>
+<p><strong>Q: Does my data go to the cloud?</strong><br>A: Only your <em>questions</em> and <em>tool results</em> are sent to the LLM API. Your files, database, and system are never directly accessible to the cloud. Think of it as calling a consultant on the phone &mdash; you describe the problem, they suggest a solution, but they never enter your office.</p>
+<p><strong>Q: Can the AI delete my files?</strong><br>A: Only if you explicitly ask it to, and only through the <code>shell_exec</code> or <code>file_write</code> tools. The Grammar Shield blocks injection attempts. You can also restrict which tools are available.</p>
+<p><strong>Q: What about prompt injection attacks?</strong><br>A: Sea-Claw&rsquo;s tool calls are parsed from structured JSON, not free text. The LLM must produce valid JSON with a tool name that exists in the 63-tool registry. Hallucinated tool names are simply ignored. The Grammar Shield catches injection patterns before they reach the LLM.</p>
+<p><strong>Q: Is it safe to run on a public server?</strong><br>A: Yes, with precautions. Use the <code>telegram_chat_id</code> setting to restrict the bot to your chat only. The HTTP API listens on localhost by default. Use token authentication for API access.</p>
+
 <h3>Technical</h3>
-<p><strong>Q: Why C instead of Rust?</strong><br>A: C11 compiles everywhere, has zero runtime overhead, and produces the smallest binaries. Rust's borrow checker adds complexity without benefit when using arena allocation (which already prevents memory bugs).</p>
-<p><strong>Q: Can I add my own tools?</strong><br>A: Yes. Create a .c file in <code>src/hands/impl/</code>, register it in <code>sea_tools.c</code>, add to Makefile. See the Developer Guide.</p>
-<p><strong>Q: How do I update?</strong><br>A: <code>git pull &amp;&amp; make release</code>. Your database and config are preserved.</p>
+<p><strong>Q: Why C instead of Rust?</strong><br>A: C11 compiles everywhere, has zero runtime overhead, and produces the smallest binaries. Rust&rsquo;s borrow checker adds complexity without benefit when using arena allocation (which already prevents memory bugs by design). C also has a 50-year track record &mdash; Linux, SQLite, curl, Redis, Nginx, and Git are all C.</p>
+<p><strong>Q: Can I add my own tools?</strong><br>A: Yes! Create a .c file in <code>src/hands/impl/</code>, register it in <code>sea_tools.c</code>, add to Makefile. See the Developer Guide. It takes about 10 minutes.</p>
+<p><strong>Q: How do I update Sea-Claw?</strong><br>A: <code>git pull &amp;&amp; make release</code>. Your database and config are preserved. The SQLite schema auto-migrates.</p>
+<p><strong>Q: Can I use a local LLM instead of cloud APIs?</strong><br>A: Yes. Set <code>llm_provider</code> to <code>"local"</code> and point <code>llm_api_url</code> to your Ollama, llama.cpp, or vLLM server. Any OpenAI-compatible API works.</p>
+<p><strong>Q: What happens if the LLM API is down?</strong><br>A: The fallback chain kicks in automatically. If OpenRouter fails, Sea-Claw tries OpenAI, then Gemini. If all fail, you get a clear error message. Local tools still work.</p>
+<p><strong>Q: Can I run multiple Sea-Claw instances?</strong><br>A: Yes. Each instance uses its own database file and config. You can run one for Telegram, one for the HTTP API, and one for cron jobs &mdash; all on the same machine.</p>
+<p><strong>Q: What&rsquo;s the maximum message size?</strong><br>A: Limited by the request arena (default 1 MB). That&rsquo;s about 250,000 words &mdash; far more than any practical message. For very large file operations, the tool reads/writes in chunks.</p>
+
+<h3>Raspberry Pi &amp; Edge</h3>
+<p><strong>Q: Which Pi models are supported?</strong><br>A: Pi 4 (all RAM variants), Pi 5, and Pi Zero 2 W. The Pi 3B+ works but is slower. Pi Zero (original, ARMv6) is not supported.</p>
+<p><strong>Q: How much does it cost to run 24/7 on a Pi?</strong><br>A: A Pi 4 draws ~5 watts. At typical electricity rates, that&rsquo;s about $5/year. Add ~$2-10/month for LLM API usage depending on how much you chat.</p>
+<p><strong>Q: Can Sea-Claw control GPIO pins on the Pi?</strong><br>A: Yes, through the <code>shell_exec</code> tool. You can read sensors, control LEDs, or trigger relays by running shell commands that interact with GPIO.</p>
 </section>
 
 <section class="doc-section" id="dev-add-tool">
@@ -395,6 +509,46 @@ SeaError tool_hello(SeaSlice args, SeaArena* arena, SeaSlice* output) {
   <li>Ensure <code>make release</code> builds with 0 warnings</li>
   <li>Submit a pull request to <code>develop</code></li>
 </ol>
+</section>
+
+<section class="doc-section" id="glossary">
+<h2>Glossary (30+ Terms)</h2>
+<p>Hover over <span class="glossary" data-def="This is an example tooltip! Hover over any dotted-underlined term in the docs to see its definition.">dotted terms</span> anywhere in the docs for quick definitions. Here&rsquo;s the full list:</p>
+<table>
+<tr><th>Term</th><th>Plain-English Definition</th></tr>
+<tr><td><strong>API</strong></td><td>Application Programming Interface &mdash; a way for programs to talk to each other. Like a waiter taking your order to the kitchen and bringing back food.</td></tr>
+<tr><td><strong>Arena Allocator</strong></td><td>A memory strategy where you grab one big block upfront, hand out pieces sequentially, and free everything at once. Like a whiteboard: write, erase all, repeat. No memory leaks possible.</td></tr>
+<tr><td><strong>A2A</strong></td><td>Agent-to-Agent protocol. How Sea-Claw talks to other AI agents (like Agent Zero) to delegate tasks.</td></tr>
+<tr><td><strong>Binary</strong></td><td>A compiled program file that your computer can run directly. Sea-Claw compiles into a single binary &mdash; one file, ready to go.</td></tr>
+<tr><td><strong>C11</strong></td><td>The 2011 version of the C programming language. C is the language that Linux, SQLite, and most operating systems are written in.</td></tr>
+<tr><td><strong>Compiler</strong></td><td>A program that translates human-readable code into machine instructions. Like a translator turning a recipe into actual cooking steps.</td></tr>
+<tr><td><strong>Cron</strong></td><td>A scheduler that runs tasks at specific times. Named after Chronos (Greek god of time). &ldquo;Every Monday at 9 AM, check disk usage.&rdquo;</td></tr>
+<tr><td><strong>Docker</strong></td><td>A tool that packages software into &ldquo;containers&rdquo; &mdash; like shipping containers for code. Everything the program needs is inside, so it runs the same everywhere.</td></tr>
+<tr><td><strong>DNS</strong></td><td>Domain Name System &mdash; the internet&rsquo;s phone book. Translates &ldquo;google.com&rdquo; into an IP address (like 142.250.80.46).</td></tr>
+<tr><td><strong>Fallback Chain</strong></td><td>A backup plan. If the primary LLM fails, Sea-Claw automatically tries the next one. Like having a backup generator when the power goes out.</td></tr>
+<tr><td><strong>Grammar Shield</strong></td><td>Sea-Claw&rsquo;s security system. Checks every byte of input against allowed character sets. Catches injection attacks in under 1 microsecond.</td></tr>
+<tr><td><strong>HTTP/HTTPS</strong></td><td>The language web browsers and servers use to communicate. HTTPS adds encryption (the &ldquo;S&rdquo; stands for Secure).</td></tr>
+<tr><td><strong>Injection Attack</strong></td><td>A hacking technique where malicious commands are hidden inside normal-looking input. Like hiding a bomb inside a gift box. The Grammar Shield catches these.</td></tr>
+<tr><td><strong>JSON</strong></td><td>JavaScript Object Notation &mdash; a way to structure data as labeled fields. Like a form: <code>{"name": "Alice", "age": 30}</code>.</td></tr>
+<tr><td><strong>libcurl</strong></td><td>A C library for making HTTP requests. Used by Sea-Claw to talk to Telegram, LLM APIs, and web services. Powers billions of devices worldwide.</td></tr>
+<tr><td><strong>LLM</strong></td><td>Large Language Model &mdash; an AI that understands and generates human language. Examples: GPT-4, Claude, Gemini. Sea-Claw uses these as its &ldquo;brain.&rdquo;</td></tr>
+<tr><td><strong>malloc/free</strong></td><td>Traditional C memory management. You request memory (malloc) and return it (free). Forgetting to free causes leaks. Sea-Claw avoids this entirely with arenas.</td></tr>
+<tr><td><strong>Mesh Network</strong></td><td>Multiple Sea-Claw instances connected together, sharing capabilities and delegating tasks across nodes.</td></tr>
+<tr><td><strong>mmap</strong></td><td>Memory-mapped file &mdash; a way to reserve a block of memory from the operating system. Sea-Claw uses this to create its arenas.</td></tr>
+<tr><td><strong>PII</strong></td><td>Personally Identifiable Information &mdash; data that can identify a person (email, phone, SSN). Sea-Claw can detect and redact PII before sending to cloud LLMs.</td></tr>
+<tr><td><strong>SeaSlice</strong></td><td>Sea-Claw&rsquo;s zero-copy string type. A pointer + length that views existing memory without copying it. Like reading a book without photocopying every page.</td></tr>
+<tr><td><strong>SeaZero</strong></td><td>Sea-Claw&rsquo;s multi-agent orchestration layer. Delegates tasks to Agent Zero (Python) running in Docker. Sea-Claw stays sovereign; Agent Zero does the heavy lifting.</td></tr>
+<tr><td><strong>SQLite</strong></td><td>A tiny database engine that stores everything in a single file. No server needed. Used by Firefox, Android, and billions of devices. Sea-Claw uses it for all persistent data.</td></tr>
+<tr><td><strong>SSE</strong></td><td>Server-Sent Events &mdash; a way for a server to push data to a client in real-time. Sea-Claw uses this to stream LLM tokens as they arrive, so you see the response being typed out.</td></tr>
+<tr><td><strong>Static Tool Registry</strong></td><td>All 63 tools are compiled into the binary at build time. The AI cannot create new tools at runtime. Like a vending machine with fixed buttons &mdash; you can&rsquo;t add new ones without rebuilding the machine.</td></tr>
+<tr><td><strong>Telegram</strong></td><td>A messaging app with 900+ million users. Sea-Claw runs as a Telegram bot you can message from your phone, anywhere in the world.</td></tr>
+<tr><td><strong>Token (LLM)</strong></td><td>A word-piece used by LLMs. 1 token &asymp; 3/4 of a word. &ldquo;Hello world&rdquo; is 2 tokens. 1024 tokens &asymp; 750 words &asymp; 1.5 pages.</td></tr>
+<tr><td><strong>Token (Auth)</strong></td><td>A secret string used to prove identity. Like a password, but generated by the system and used for API access.</td></tr>
+<tr><td><strong>TUI</strong></td><td>Text User Interface &mdash; an interactive terminal. You type commands and see text output. Sea-Claw&rsquo;s TUI supports 30+ slash commands and natural language input.</td></tr>
+<tr><td><strong>WAL Mode</strong></td><td>Write-Ahead Logging &mdash; a SQLite feature that allows reading while writing. Makes the database faster and more reliable.</td></tr>
+<tr><td><strong>WebSocket</strong></td><td>A protocol for real-time two-way communication between a browser and a server. Like a phone call (always connected) vs. HTTP which is like sending letters.</td></tr>
+<tr><td><strong>Zero-Copy</strong></td><td>A technique where data is read in place without making copies. Sea-Claw&rsquo;s JSON parser points into the original input buffer instead of copying strings. Much faster and uses less memory.</td></tr>
+</table>
 </section>
 
 <section class="doc-section" id="error-codes">
