@@ -1,8 +1,10 @@
-// Part 3: Architecture sections
+// Part 3: Architecture sections (enhanced with expanded analogies, attack walkthrough)
 
 var CONTENT_ARCH = `
 <section class="doc-section" id="five-pillars">
 <h2>The Five Pillars</h2>
+<p>Sea-Claw is built like a <strong>human body</strong>. Each pillar has a clear job, and they work together without stepping on each other&rsquo;s toes:</p>
+
 <div class="diagram">+-------------+-----------+-----------+----------+------------+
 | Substrate   |  Senses   |  Shield   |  Brain   |   Hands    |
 | - Arena     | - JSON    | - Grammar | - Agent  | - 63 Tools |
@@ -16,21 +18,19 @@ var CONTENT_ARCH = `
 +-------------------------------------------------------------+
 |        SeaZero: Bridge | Proxy | Workspace                  |
 +-------------------------------------------------------------+</div>
+
 <table>
-<tr><th>Pillar</th><th>Directory</th><th>Purpose</th><th>Analogy</th></tr>
-<tr><td><strong>Substrate</strong></td><td><code>src/core/</code></td><td>Memory, logging, database, config</td><td>Skeleton &amp; nervous system</td></tr>
-<tr><td><strong>Senses</strong></td><td><code>src/senses/</code></td><td>JSON parsing, HTTP client, SSE</td><td>Eyes &amp; ears</td></tr>
-<tr><td><strong>Shield</strong></td><td><code>src/shield/</code></td><td>Grammar validation, injection detection</td><td>Immune system</td></tr>
-<tr><td><strong>Brain</strong></td><td><code>src/brain/</code></td><td>LLM agent loop, tool dispatch</td><td>The brain</td></tr>
-<tr><td><strong>Hands</strong></td><td><code>src/hands/</code></td><td>63 tool implementations</td><td>The hands</td></tr>
+<tr><th>Pillar</th><th>Analogy</th><th>What It Does</th></tr>
+<tr><td><strong>Substrate</strong></td><td>The <strong>skeleton and bloodstream</strong>. Without bones, nothing stands up. Without blood, nothing gets nutrients. The Substrate provides memory (arena), record-keeping (database), logging (nervous system), and configuration (DNA).</td><td>Arena allocator, SQLite DB, structured logging, JSON config loader</td></tr>
+<tr><td><strong>Senses</strong></td><td>The <strong>eyes and ears</strong>. How Sea-Claw perceives the outside world. It can read structured data (JSON parser) and communicate over the internet (HTTP client), including real-time streaming (SSE).</td><td>Zero-copy JSON parser, HTTP client with streaming</td></tr>
+<tr><td><strong>Shield</strong></td><td>The <strong>immune system</strong>. Just like your body rejects viruses before they reach your organs, the Shield rejects malicious input before it reaches the Brain or Hands. It catches hackers the way white blood cells catch bacteria.</td><td>Grammar validation, injection detection, PII filtering</td></tr>
+<tr><td><strong>Brain</strong></td><td>The <strong>brain</strong>. It thinks, plans, and decides. It talks to cloud LLMs (GPT-4, Claude, Gemini) to understand your request, then decides which tools to use. Like a human brain that can&rsquo;t lift heavy objects itself but tells the hands what to do.</td><td>LLM agent loop, tool dispatch, streaming, fallback chain</td></tr>
+<tr><td><strong>Hands</strong></td><td>The <strong>hands</strong>. They do the actual work &mdash; reading files, running commands, searching the web, computing hashes. The Brain decides; the Hands execute. 63 tools, each a specialist.</td><td>63 compiled tool implementations</td></tr>
 </table>
-<h3>Data Flow</h3>
-<pre>User Input -> Channel -> Shield (validate) -> Brain (think)
-  -> Brain calls Tool -> Hands (execute) -> Brain (interpret)
-  -> Shield (validate output) -> Channel -> User</pre>
+
 <div class="callout tip">
 <div class="callout-title">Defense in Depth</div>
-The Shield sits between <em>every</em> boundary. Input validated before Brain sees it. Output validated before user sees it. Even if one layer fails, the next catches it.
+The Shield sits between <em>every</em> boundary &mdash; like airport security with multiple checkpoints. Input is scanned before the Brain sees it. Tool results are scanned before you see them. Even if one checkpoint fails, the next one catches the threat.
 </div>
 </section>
 
@@ -118,6 +118,33 @@ Think of malloc like a parking lot with random spots &mdash; gaps form (fragment
 <p>No malloc/free = no use-after-free, no double-free, no heap corruption.</p>
 <h3>Layer 6: A2A Output Verification</h3>
 <p>Remote agent responses Shield-validated before use.</p>
+
+<h3>Real-World Attack Walkthrough</h3>
+<p>Let&rsquo;s trace what happens when a hacker tries to sneak a command through Sea-Claw:</p>
+
+<div class="flow-step"><div class="step-num">!</div><div class="step-text"><strong>Attacker sends:</strong> <code>What time is it? ; rm -rf /</code><br><em>The <code>; rm -rf /</code> part is a shell injection that would delete everything on a vulnerable system.</em></div></div>
+<div class="flow-arrow">&darr;</div>
+<div class="flow-step"><div class="step-num">1</div><div class="step-text"><strong>Layer 1 (Grammar Shield)</strong> scans every byte. The semicolon <code>;</code> followed by <code>rm</code> triggers the injection pattern detector.</div></div>
+<div class="flow-arrow">&darr;</div>
+<div class="flow-step"><div class="step-num">&times;</div><div class="step-text"><strong>REJECTED.</strong> Sea-Claw returns: <em>&ldquo;Input rejected: potential injection detected.&rdquo;</em> The message <strong>never reaches the Brain, the LLM, or any tool</strong>. Total time: &lt;1 microsecond.</div></div>
+
+<p style="margin-top:16px;">But what if a cleverer attacker encodes the injection to bypass Layer 1?</p>
+
+<div class="flow-step"><div class="step-num">!</div><div class="step-text"><strong>Attacker sends:</strong> <code>Read the file at $(cat /etc/passwd)</code></div></div>
+<div class="flow-arrow">&darr;</div>
+<div class="flow-step"><div class="step-num">1</div><div class="step-text"><strong>Layer 1</strong> passes (no obvious shell metacharacters in the text).</div></div>
+<div class="flow-arrow">&darr;</div>
+<div class="flow-step"><div class="step-num">2</div><div class="step-text"><strong>Layer 2 (Injection Detector)</strong> catches the <code>$(</code> pattern &mdash; this is a command substitution attempt. <strong>REJECTED.</strong></div></div>
+
+<p style="margin-top:16px;">And if somehow both layers miss it?</p>
+
+<div class="flow-step"><div class="step-num">3</div><div class="step-text"><strong>Layer 3 (Tool Validation)</strong> &mdash; The <code>file_read</code> tool validates the path through the Shield before opening. <code>$(cat /etc/passwd)</code> is not a valid filename.</div></div>
+<div class="flow-step"><div class="step-num">4</div><div class="step-text"><strong>Layer 4 (Static Registry)</strong> &mdash; Even if the LLM hallucinates a tool name like <code>exec_shell_raw</code>, it doesn&rsquo;t exist in the 63-tool registry. Nothing happens.</div></div>
+
+<div class="callout tip">
+<div class="callout-title">The Key Takeaway</div>
+<p>An attacker would need to bypass <strong>all six layers simultaneously</strong> to cause harm. Each layer is independent and uses a different detection method. This is like having a lock, an alarm, a guard dog, a moat, a drawbridge, AND a dragon &mdash; all protecting the same castle.</p>
+</div>
 </section>
 
 <section class="doc-section" id="build-system">

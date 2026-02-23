@@ -1,17 +1,21 @@
-// Part 2: Getting Started sections
+// Part 2: Getting Started sections (enhanced with plain-English, try-it boxes, annotations)
 
 var CONTENT_START = `
 <section class="doc-section" id="prerequisites">
 <h2>Prerequisites</h2>
+<p>Sea-Claw needs a few standard tools to build. Think of it like baking a cake &mdash; you need an oven (compiler), a mixing bowl (libraries), and a recipe book (build system). Most Linux systems already have these.</p>
 <table>
-<tr><th>Requirement</th><th>Version</th><th>Why</th><th>Install</th></tr>
-<tr><td>GCC or Clang</td><td>C11</td><td>Compiler</td><td><code>apt install build-essential</code></td></tr>
-<tr><td>libcurl</td><td>7.x+</td><td>HTTP client</td><td><code>apt install libcurl4-openssl-dev</code></td></tr>
-<tr><td>libsqlite3</td><td>3.x+</td><td>Database</td><td><code>apt install libsqlite3-dev</code></td></tr>
-<tr><td>libreadline</td><td>8.x+</td><td>TUI (optional)</td><td><code>apt install libreadline-dev</code></td></tr>
+<tr><th>Requirement</th><th>What It Is</th><th>Why Sea-Claw Needs It</th><th>Install</th></tr>
+<tr><td><strong>GCC or Clang</strong></td><td>A <span class="glossary" data-def="A program that translates human-readable C code into machine code that your computer can execute. Like a translator turning a recipe into actual cooking instructions.">compiler</span> &mdash; translates C code into a program your computer can run</td><td>Builds the Sea-Claw binary</td><td><code>apt install build-essential</code></td></tr>
+<tr><td><strong>libcurl</strong></td><td>A library for making <span class="glossary" data-def="HyperText Transfer Protocol &mdash; the language web browsers and servers use to communicate. When you visit a website, your browser speaks HTTP.">HTTP</span> requests &mdash; like a phone for your program to call websites</td><td>Talks to Telegram, LLM APIs, and web services</td><td><code>apt install libcurl4-openssl-dev</code></td></tr>
+<tr><td><strong>libsqlite3</strong></td><td>A tiny <span class="glossary" data-def="A structured collection of data stored in a file. SQLite is a database that lives in a single file on your computer &mdash; no server needed.">database</span> engine that stores data in a single file</td><td>Stores chat history, tasks, config, and audit trail</td><td><code>apt install libsqlite3-dev</code></td></tr>
+<tr><td><strong>libreadline</strong></td><td>Makes the terminal input nicer (arrow keys, history)</td><td>Better typing experience in TUI mode (optional)</td><td><code>apt install libreadline-dev</code></td></tr>
 </table>
 <h3>One-Line Install (Debian/Ubuntu/Raspberry Pi OS)</h3>
-<pre>sudo apt update &amp;&amp; sudo apt install -y build-essential libcurl4-openssl-dev libsqlite3-dev libreadline-dev</pre>
+<div class="try-it">
+<div class="try-it-header"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div><div class="label">TERMINAL</div><button class="try-it-copy">Copy</button></div>
+<div class="try-it-body"><span class="prompt">$</span> sudo apt update && sudo apt install -y build-essential libcurl4-openssl-dev libsqlite3-dev libreadline-dev</div>
+</div>
 <h3>macOS</h3>
 <pre>brew install curl sqlite readline</pre>
 </section>
@@ -43,32 +47,55 @@ EOF</pre>
 
 <section class="doc-section" id="first-run">
 <h2>First Run</h2>
-<p>When you start Sea-Claw for the first time:</p>
-<pre>  ____  ______  ___      ________  ___  ___      __
+<p>When you start Sea-Claw, you&rsquo;ll see a startup log. Here&rsquo;s what each line means:</p>
+<div class="try-it">
+<div class="try-it-header"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div><div class="label">SEA-CLAW STARTUP</div></div>
+<div class="try-it-body"><span class="output">  ____  ______  ___      ________  ___  ___      __
  / ___// ____/ / /  |   / ____/ / / /  | |     / /
  \\__ \\/ __/   / /|  |  / /   / / / /   | | /| / /
  ___/ / /___  / ___ | / /___/ /_/ /    | |/ |/ /
-/____/_____/ /_/  |_| \\____/\\____/     |_/__|__/
+/____/_____/ /_/  |_| \\____/\\____/     |_/__|__/</span>
 
-T+0ms  [CONFIG]  INF: Loaded .env file: .env
-T+0ms  [SYSTEM]  INF: Substrate initializing. Arena: 16MB (Fixed).
-T+0ms  [HANDS]   INF: Tool registry loaded: 63 static tools
-T+6ms  [DB]      INF: Opened database: seaclaw.db
-T+6ms  [AGENT]   INF: Provider: OpenRouter, Model: moonshotai/kimi-k2.5
-T+8ms  [SHIELD]  INF: Grammar Filter: ACTIVE.
-T+8ms  [STATUS]  INF: Waiting for command... (Type /help)
+<span class="highlight">T+0ms</span>  [CONFIG]  INF: Loaded .env file: .env
+<span class="highlight">T+0ms</span>  [SYSTEM]  INF: Substrate initializing. Arena: 16MB (Fixed).
+<span class="highlight">T+0ms</span>  [HANDS]   INF: Tool registry loaded: 63 static tools
+<span class="highlight">T+6ms</span>  [DB]      INF: Opened database: seaclaw.db
+<span class="highlight">T+6ms</span>  [AGENT]   INF: Provider: OpenRouter, Model: moonshotai/kimi-k2.5
+<span class="highlight">T+8ms</span>  [SHIELD]  INF: Grammar Filter: ACTIVE.
+<span class="highlight">T+8ms</span>  [STATUS]  INF: Waiting for command... (Type /help)
 
-&gt; </pre>
-<p>Type <code>/help</code> to see all commands, or just ask a natural language question.</p>
+<span class="prompt">&gt;</span> </div>
+</div>
+
+<details class="expand">
+<summary>What does each line mean?</summary>
+<div class="expand-content">
+<ul>
+  <li><strong>T+0ms</strong> &mdash; Time since startup in milliseconds. <code>T+6ms</code> means 6 thousandths of a second have passed.</li>
+  <li><strong>[CONFIG]</strong> &mdash; The tag tells you which module is speaking. CONFIG = configuration, HANDS = tools, DB = database, etc.</li>
+  <li><strong>INF</strong> &mdash; Log level. INF = information (normal), WRN = warning, ERR = error.</li>
+  <li><strong>Arena: 16MB</strong> &mdash; Sea-Claw reserved 16 megabytes of memory upfront. This is its &ldquo;whiteboard&rdquo; for all temporary work.</li>
+  <li><strong>63 static tools</strong> &mdash; All 63 tools are compiled into the binary. The AI can call any of them but cannot create new ones.</li>
+  <li><strong>Grammar Filter: ACTIVE</strong> &mdash; The security system is running. Every input will be checked for injection attacks.</li>
+</ul>
+<p>Notice: the entire startup took <strong>8 milliseconds</strong>. That&rsquo;s faster than a single frame of a 120fps video game.</p>
+</div>
+</details>
+
+<p>Now type <code>/help</code> to see all commands, or just ask a natural language question like &ldquo;What files are in the current directory?&rdquo;</p>
 <div class="callout warn">
 <div class="callout-title">API Key Required</div>
-Sea-Claw needs at least one LLM API key. Get a free one from <a href="https://openrouter.ai" style="color:#58a6ff">OpenRouter</a>.
+Sea-Claw needs at least one <span class="glossary" data-def="Large Language Model &mdash; an AI that understands and generates human language. Examples: GPT-4, Claude, Gemini. Sea-Claw uses these as its 'brain' for thinking.">LLM</span> API key to think. Without it, the tools still work but the AI brain has nothing to connect to. Get a free key from <a href="https://openrouter.ai" style="color:#58a6ff">OpenRouter</a> (many models have free tiers).
 </div>
 </section>
 
 <section class="doc-section" id="configuration">
 <h2>Configuration</h2>
-<p>Two sources: <code>config.json</code> (non-secret) and <code>.env</code> (secrets).</p>
+<p>Sea-Claw has two config files &mdash; think of them as a <strong>public profile</strong> and a <strong>private keychain</strong>:</p>
+<ul>
+  <li><strong><code>config.json</code></strong> &mdash; Non-secret settings (which AI model to use, how creative it should be, how much memory to reserve). Safe to share.</li>
+  <li><strong><code>.env</code></strong> &mdash; Secret keys (API passwords, bot tokens). <em>Never</em> share this file.</li>
+</ul>
 <h3>config.json</h3>
 <pre>{
   "telegram_token": "",
@@ -89,9 +116,9 @@ Sea-Claw needs at least one LLM API key. Get a free one from <a href="https://op
 <tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr>
 <tr><td><code>llm_provider</code></td><td>string</td><td>"openrouter"</td><td>Primary LLM provider</td></tr>
 <tr><td><code>llm_model</code></td><td>string</td><td>"moonshotai/kimi-k2.5"</td><td>Model name</td></tr>
-<tr><td><code>llm_max_tokens</code></td><td>int</td><td>1024</td><td>Max response tokens</td></tr>
-<tr><td><code>llm_temperature</code></td><td>float</td><td>0.3</td><td>Creativity (0=deterministic)</td></tr>
-<tr><td><code>arena_size_mb</code></td><td>int</td><td>16</td><td>Session arena size</td></tr>
+<tr><td><code>llm_max_tokens</code></td><td>int</td><td>1024</td><td>Max words in AI response. Think of <span class="glossary" data-def="Tokens are word-pieces. 1 token is roughly 3/4 of a word. 1024 tokens is about 750 words &mdash; roughly 1.5 pages of text.">tokens</span> as word-pieces (~750 words).</td></tr>
+<tr><td><code>llm_temperature</code></td><td>float</td><td>0.3</td><td>AI creativity dial. 0 = robotic and predictable (like a calculator). 1.0 = creative and surprising (like a poet). 0.3 is a good default.</td></tr>
+<tr><td><code>arena_size_mb</code></td><td>int</td><td>16</td><td>Size of Sea-Claw&rsquo;s &ldquo;whiteboard&rdquo; for temporary work. 16 MB handles most tasks. Reduce to 4 for tiny devices.</td></tr>
 <tr><td><code>db_path</code></td><td>string</td><td>"seaclaw.db"</td><td>SQLite file path</td></tr>
 <tr><td><code>log_level</code></td><td>string</td><td>"info"</td><td>debug/info/warn/error</td></tr>
 <tr><td><code>llm_fallbacks</code></td><td>array</td><td>[]</td><td>Fallback providers</td></tr>
@@ -122,6 +149,10 @@ The <code>.env</code> file is in <code>.gitignore</code>. If accidentally commit
 
 <section class="doc-section" id="docker-setup">
 <h2>Docker Setup</h2>
+<div class="callout info">
+<div class="callout-title">What is Docker?</div>
+<p>Think of <span class="glossary" data-def="Docker is a tool that packages software into 'containers' &mdash; like shipping containers for code. Everything the program needs is inside the container, so it runs the same everywhere.">Docker</span> as a shipping container for software. Instead of installing Sea-Claw directly on your computer, you put it in a container that has everything it needs. The container runs the same on any machine &mdash; your laptop, a server, or a Raspberry Pi. It&rsquo;s the easiest way to deploy Sea-Claw without worrying about dependencies.</p>
+</div>
 <pre># Build
 docker build -t seaclaw .
 
