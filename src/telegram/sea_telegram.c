@@ -118,6 +118,26 @@ SeaError sea_telegram_send_slice(SeaTelegram* tg, i64 chat_id, SeaSlice text) {
     return sea_telegram_send(tg, chat_id, buf);
 }
 
+SeaError sea_telegram_delete_webhook(SeaTelegram* tg) {
+    if (!tg) return SEA_ERR_IO;
+
+    char url[TG_URL_BUF];
+    build_url(url, sizeof(url), tg->bot_token, "deleteWebhook?drop_pending_updates=true");
+
+    u64 saved = tg->arena->offset;
+    SeaHttpResponse resp;
+    SeaError err = sea_http_get(url, tg->arena, &resp);
+    tg->arena->offset = saved;
+
+    if (err == SEA_OK && resp.status_code == 200) {
+        SEA_LOG_INFO("TELEGRAM", "Webhook cleared (drop_pending_updates=true)");
+    } else {
+        SEA_LOG_WARN("TELEGRAM", "deleteWebhook failed (HTTP %d)",
+                     err == SEA_OK ? resp.status_code : 0);
+    }
+    return err;
+}
+
 SeaError sea_telegram_poll(SeaTelegram* tg) {
     if (!tg || !tg->running) return SEA_ERR_IO;
 

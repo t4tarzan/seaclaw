@@ -1606,6 +1606,9 @@ static int run_telegram(const char* token, i64 chat_id) {
         return 1;
     }
 
+    /* Clear any stale webhook to prevent HTTP 409 conflicts */
+    sea_telegram_delete_webhook(&s_telegram);
+
     SEA_LOG_INFO("STATUS", "Telegram polling started. Ctrl+C to stop.");
 
     while (s_running) {
