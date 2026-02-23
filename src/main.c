@@ -362,6 +362,7 @@ static void cmd_help(void) {
     printf("    /sztasks           Show delegated task history\n");
     printf("    /usage             LLM token usage breakdown\n");
     printf("    /audit             Recent security events\n");
+    printf("    /seazero           Multi-agent status dashboard\n");
     printf("    /utests [sprint]   Usability test results (E13-E17)\n");
     printf("\n");
 }
@@ -832,6 +833,74 @@ static void cmd_recall(const char* input) {
     printf("\n");
 }
 
+/* ── TUI: /seazero ───────────────────────────────────────── */
+
+static void cmd_seazero(void) {
+    printf("\n  \033[1mSeaZero Multi-Agent Status\033[0m\n");
+    printf("  ════════════════════════════════════════\n");
+
+    /* Proxy status */
+    bool proxy_up = sea_proxy_running();
+    printf("  LLM Proxy:     %s (port 7432)\n",
+           proxy_up ? "\033[32m● running\033[0m" : "\033[31m● stopped\033[0m");
+
+    /* Agent Zero health */
+    SeaArena tmp;
+    sea_arena_create(&tmp, 4096);
+    SeaZeroConfig zcfg = {0};
+    if (s_db) {
+        const char* url = sea_db_config_get(s_db, "seazero_agent_url", &tmp);
+        sea_zero_init(&zcfg, url);
+    }
+    if (zcfg.enabled) {
+        SeaZeroHealth h = sea_zero_health(&zcfg, &tmp);
+        printf("  Agent Zero:    %s",
+               h.reachable ? "\033[32m● reachable\033[0m" : "\033[31m● unreachable\033[0m");
+        if (h.reachable) {
+            printf(" (%s, %u active tasks)", h.status ? h.status : "?", h.active_tasks);
+        }
+        printf("\n");
+    } else {
+        printf("  Agent Zero:    \033[33m○ not configured\033[0m\n");
+    }
+    sea_arena_destroy(&tmp);
+
+    /* Registered agents from DB */
+    if (s_db) {
+        SeaDbAgent agents[8];
+        i32 ac = sea_db_sz_agent_list(s_db, agents, 8, &s_request_arena);
+        printf("  Agents in DB:  %d registered\n", ac);
+        for (i32 i = 0; i < ac; i++) {
+            const char* icon = "\033[32m●\033[0m";
+            if (agents[i].status && strcmp(agents[i].status, "stopped") == 0)
+                icon = "\033[31m●\033[0m";
+            printf("    %s %s  port:%d  %s/%s\n",
+                   icon, agents[i].agent_id, agents[i].port,
+                   agents[i].provider ? agents[i].provider : "?",
+                   agents[i].model ? agents[i].model : "?");
+        }
+
+        /* Recent delegated tasks */
+        SeaDbSzTask tasks[5];
+        i32 tc = sea_db_sz_task_list(s_db, NULL, tasks, 5, &s_request_arena);
+        printf("  Recent tasks:  %d\n", tc);
+        for (i32 i = 0; i < tc; i++) {
+            const char* icon = "\033[33m○\033[0m";
+            if (tasks[i].status && strcmp(tasks[i].status, "completed") == 0)
+                icon = "\033[32m✓\033[0m";
+            else if (tasks[i].status && strcmp(tasks[i].status, "failed") == 0)
+                icon = "\033[31m✗\033[0m";
+            printf("    %s [%s] %.50s%s\n", icon,
+                   tasks[i].status ? tasks[i].status : "?",
+                   tasks[i].task_text ? tasks[i].task_text : "?",
+                   tasks[i].task_text && strlen(tasks[i].task_text) > 50 ? "..." : "");
+        }
+        sea_arena_reset(&s_request_arena);
+    }
+
+    printf("  ════════════════════════════════════════\n\n");
+}
+
 /* ── TUI: /utests ────────────────────────────────────────── */
 
 static void cmd_utests(const char* input) {
@@ -1061,6 +1130,8 @@ static void dispatch_command(const char* input) {
         cmd_stream(input);
     } else if (strcmp(input, "/think") == 0 || strncmp(input, "/think ", 7) == 0) {
         cmd_think(input);
+    } else if (strcmp(input, "/seazero") == 0) {
+        cmd_seazero();
     } else if (strcmp(input, "/utests") == 0 || strncmp(input, "/utests ", 8) == 0) {
         cmd_utests(input);
     } else if (strcmp(input, "/clear") == 0) {
