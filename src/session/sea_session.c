@@ -8,12 +8,17 @@
 #include "seaclaw/sea_session.h"
 #include "seaclaw/sea_log.h"
 
+#include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
 /* ── Helpers ──────────────────────────────────────────────── */
+
+/* ── Access internal DB handle ───────────────────────────── */
+
+struct SeaDb { sqlite3* handle; };
 
 static u64 now_ms(void) {
     struct timespec ts;
@@ -456,10 +461,51 @@ SeaError sea_session_save_all(SeaSessionManager* mgr) {
     return SEA_OK;
 }
 
+/* Callback context for loading sessions */
+typedef struct {
+    SeaSessionManager* mgr;
+    u32 loaded;
+} SessionLoadCtx;
+
+static int session_row_cb(void* ctx, int ncols, char** vals, char** cols) {
+    SessionLoadCtx* lc = (SessionLoadCtx*)ctx;
+    if (lc->mgr->count >= SEA_MAX_SESSIONS) return 0;
+
+    SeaSession* s = &lc->mgr->sessions[lc->mgr->count];
+    memset(s, 0, sizeof(*s));
+
+    for (int i = 0; i < ncols; i++) {
+        if (!vals[i]) continue;
+        if (strcmp(cols[i], "key") == 0)
+            strncpy(s->key, vals[i], SEA_SESSION_KEY_MAX - 1);
+        else if (strcmp(cols[i], "channel") == 0)
+            s->channel = arena_strdup(&lc->mgr->arena, vals[i]);
+        else if (strcmp(cols[i], "chat_id") == 0)
+            s->chat_id = atoll(vals[i]);
+        else if (strcmp(cols[i], "summary") == 0)
+            s->summary = arena_strdup(&lc->mgr->arena, vals[i]);
+        else if (strcmp(cols[i], "total_messages") == 0)
+            s->total_messages = (u32)atoi(vals[i]);
+        else if (strcmp(cols[i], "created_at") == 0)
+            s->created_at = (u64)atoll(vals[i]);
+        else if (strcmp(cols[i], "last_active") == 0)
+            s->last_active = (u64)atoll(vals[i]);
+    }
+
+    lc->mgr->count++;
+    lc->loaded++;
+    return 0;
+}
+
 SeaError sea_session_load_all(SeaSessionManager* mgr) {
     if (!mgr || !mgr->db) return SEA_ERR_CONFIG;
-    /* Sessions are loaded lazily on first access via sea_session_get.
-     * This function is a placeholder for future bulk-load optimization. */
-    SEA_LOG_INFO("SESSION", "Session lazy-loading enabled");
+
+    mgr->count = 0; /* Reset before loading */
+    SessionLoadCtx ctx = { .mgr = mgr, .loaded = 0 };
+    sqlite3_exec(mgr->db->handle,
+        "SELECT * FROM sessions ORDER BY last_active DESC;",
+        session_row_cb, &ctx, NULL);
+
+    SEA_LOG_INFO("SESSION", "Loaded %u sessions from DB", ctx.loaded);
     return SEA_OK;
 }

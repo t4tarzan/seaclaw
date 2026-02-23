@@ -8,9 +8,15 @@
 #include "seaclaw/sea_usage.h"
 #include "seaclaw/sea_log.h"
 
+#include <sqlite3.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+/* ── Access internal DB handle ───────────────────────────── */
+
+struct SeaDb { sqlite3* handle; };
 
 /* ── Helpers ──────────────────────────────────────────────── */
 
@@ -158,9 +164,95 @@ SeaError sea_usage_save(SeaUsageTracker* tracker) {
     return SEA_OK;
 }
 
+/* Callback context for loading usage stats */
+typedef struct {
+    SeaUsageTracker* tracker;
+    u32 loaded;
+} UsageLoadCtx;
+
+static int usage_row_cb(void* ctx, int ncols, char** vals, char** cols) {
+    UsageLoadCtx* lc = (UsageLoadCtx*)ctx;
+    SeaUsageTracker* t = lc->tracker;
+
+    const char* provider = NULL;
+    u32 date = 0;
+    u64 tokens_in = 0, tokens_out = 0, requests = 0, errors = 0;
+
+    for (int i = 0; i < ncols; i++) {
+        if (!vals[i]) continue;
+        if (strcmp(cols[i], "provider") == 0)    provider = vals[i];
+        else if (strcmp(cols[i], "date") == 0)   date = (u32)atoi(vals[i]);
+        else if (strcmp(cols[i], "tokens_in") == 0)  tokens_in = (u64)atoll(vals[i]);
+        else if (strcmp(cols[i], "tokens_out") == 0) tokens_out = (u64)atoll(vals[i]);
+        else if (strcmp(cols[i], "requests") == 0)   requests = (u64)atoll(vals[i]);
+        else if (strcmp(cols[i], "errors") == 0)     errors = (u64)atoll(vals[i]);
+    }
+
+    if (!provider) return 0;
+
+    /* Accumulate into provider stats */
+    SeaUsageProvider* p = NULL;
+    for (u32 i = 0; i < t->provider_count; i++) {
+        if (strcmp(t->providers[i].name, provider) == 0) { p = &t->providers[i]; break; }
+    }
+    if (!p && t->provider_count < SEA_USAGE_PROVIDER_MAX) {
+        p = &t->providers[t->provider_count++];
+        memset(p, 0, sizeof(*p));
+        strncpy(p->name, provider, SEA_USAGE_PROVIDER_NAME_MAX - 1);
+    }
+    if (p) {
+        p->tokens_in += tokens_in;
+        p->tokens_out += tokens_out;
+        p->requests += requests;
+        p->errors += errors;
+    }
+
+    /* Accumulate into daily stats */
+    if (date > 0) {
+        SeaUsageDay* d = NULL;
+        for (u32 i = 0; i < t->day_count; i++) {
+            if (t->days[i].date == date) { d = &t->days[i]; break; }
+        }
+        if (!d && t->day_count < SEA_USAGE_DAYS_MAX) {
+            d = &t->days[t->day_count++];
+            memset(d, 0, sizeof(*d));
+            d->date = date;
+        }
+        if (d) {
+            d->tokens_in += tokens_in;
+            d->tokens_out += tokens_out;
+            d->requests += requests;
+            d->errors += errors;
+        }
+    }
+
+    /* Accumulate totals */
+    t->total_tokens_in += tokens_in;
+    t->total_tokens_out += tokens_out;
+    t->total_requests += requests;
+    t->total_errors += errors;
+
+    lc->loaded++;
+    return 0;
+}
+
 SeaError sea_usage_load(SeaUsageTracker* tracker) {
     if (!tracker || !tracker->db) return SEA_ERR_CONFIG;
-    SEA_LOG_INFO("USAGE", "Loading usage stats from DB (lazy)");
+
+    /* Reset counters before loading */
+    tracker->provider_count = 0;
+    tracker->day_count = 0;
+    tracker->total_tokens_in = 0;
+    tracker->total_tokens_out = 0;
+    tracker->total_requests = 0;
+    tracker->total_errors = 0;
+
+    UsageLoadCtx ctx = { .tracker = tracker, .loaded = 0 };
+    sqlite3_exec(tracker->db->handle,
+        "SELECT * FROM usage_stats ORDER BY date DESC;",
+        usage_row_cb, &ctx, NULL);
+
+    SEA_LOG_INFO("USAGE", "Loaded %u usage rows from DB", ctx.loaded);
     return SEA_OK;
 }
 

@@ -276,6 +276,15 @@ TEST_WS_OBJ := $(TEST_WS_SRC:.c=.o)
 TEST_CLI_SRC := tests/test_cli.c
 TEST_CLI_OBJ := $(TEST_CLI_SRC:.c=.o)
 
+TEST_USAGE_SRC := tests/test_usage.c
+TEST_USAGE_OBJ := $(TEST_USAGE_SRC:.c=.o)
+
+TEST_A2A_SRC := tests/test_a2a.c
+TEST_A2A_OBJ := $(TEST_A2A_SRC:.c=.o)
+
+TEST_CHANNEL_SRC := tests/test_channel.c
+TEST_CHANNEL_OBJ := $(TEST_CHANNEL_SRC:.c=.o)
+
 # ── Output ────────────────────────────────────────────────────
 
 BIN     := sea_claw
@@ -303,6 +312,9 @@ TESTBIN_TOOLS     := test_tools
 TESTBIN_MESH      := test_mesh
 TESTBIN_WS        := test_ws
 TESTBIN_CLI       := test_cli
+TESTBIN_USAGE     := test_usage
+TESTBIN_A2A       := test_a2a
+TESTBIN_CHANNEL   := test_channel
 
 # ── Targets ───────────────────────────────────────────────────
 
@@ -361,7 +373,7 @@ test-docker: clean $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_
 	./$(TESTBIN_PII)
 	@echo ""
 
-test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII) $(TESTBIN_SEAZERO) $(TESTBIN_EXT) $(TESTBIN_AUTH) $(TESTBIN_HEARTBEAT) $(TESTBIN_GRAPH) $(TESTBIN_PERSIST) $(TESTBIN_TOOLS) $(TESTBIN_MESH) $(TESTBIN_WS) $(TESTBIN_CLI)
+test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII) $(TESTBIN_SEAZERO) $(TESTBIN_EXT) $(TESTBIN_AUTH) $(TESTBIN_HEARTBEAT) $(TESTBIN_GRAPH) $(TESTBIN_PERSIST) $(TESTBIN_TOOLS) $(TESTBIN_MESH) $(TESTBIN_WS) $(TESTBIN_CLI) $(TESTBIN_USAGE) $(TESTBIN_A2A) $(TESTBIN_CHANNEL)
 	@echo ""
 	@echo "  Running tests..."
 	@echo "  ────────────────"
@@ -387,6 +399,9 @@ test: $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN
 	./$(TESTBIN_MESH)
 	./$(TESTBIN_WS)
 	./$(TESTBIN_CLI)
+	./$(TESTBIN_USAGE)
+	./$(TESTBIN_A2A)
+	./$(TESTBIN_CHANNEL)
 	@echo ""
 
 $(TESTBIN_ARENA): $(TEST_ARENA_OBJ) src/core/sea_arena.o src/core/sea_log.o
@@ -461,10 +476,19 @@ $(TESTBIN_WS): $(TEST_WS_OBJ) src/ws/sea_ws.o src/bus/sea_bus.o src/channels/sea
 $(TESTBIN_CLI): $(TEST_CLI_OBJ) src/cli/sea_cli.o src/core/sea_log.o src/core/sea_arena.o src/core/sea_config.o src/core/sea_db.o src/senses/sea_json.o src/recall/sea_recall.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
 
+$(TESTBIN_USAGE): $(TEST_USAGE_OBJ) src/usage/sea_usage.o src/core/sea_log.o src/core/sea_db.o src/core/sea_arena.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
+
+$(TESTBIN_A2A): $(TEST_A2A_OBJ) src/a2a/sea_a2a.o src/core/sea_arena.o src/core/sea_log.o src/core/sea_db.o src/senses/sea_http.o src/senses/sea_json.o src/shield/sea_shield.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
+
+$(TESTBIN_CHANNEL): $(TEST_CHANNEL_OBJ) src/channels/sea_channel.o src/bus/sea_bus.o src/core/sea_arena.o src/core/sea_log.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDFLAGS_DEBUG)
+
 # ── Clean ─────────────────────────────────────────────────────
 
 clean:
-	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII) $(TESTBIN_BENCH) $(TESTBIN_SEAZERO) $(TESTBIN_EXT) $(TESTBIN_AUTH) $(TESTBIN_HEARTBEAT) $(TESTBIN_GRAPH) $(TESTBIN_PERSIST) $(TESTBIN_TOOLS) $(TESTBIN_MESH) $(TESTBIN_WS) $(TESTBIN_CLI)
+	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII) $(TESTBIN_BENCH) $(TESTBIN_SEAZERO) $(TESTBIN_EXT) $(TESTBIN_AUTH) $(TESTBIN_HEARTBEAT) $(TESTBIN_GRAPH) $(TESTBIN_PERSIST) $(TESTBIN_TOOLS) $(TESTBIN_MESH) $(TESTBIN_WS) $(TESTBIN_CLI) $(TESTBIN_USAGE) $(TESTBIN_A2A) $(TESTBIN_CHANNEL)
 	find src tests seazero -name '*.o' -delete 2>/dev/null || true
 	@echo "  Cleaned."
 

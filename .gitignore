@@ -76,3 +76,6 @@ test_tools
 test_mesh
 test_ws
 test_cli
+test_usage
+test_a2a
+test_channel
