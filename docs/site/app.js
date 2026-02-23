@@ -1,3 +1,30 @@
+// ── Theme toggle ─────────────────────────────────────────
+function toggleTheme() {
+  document.body.classList.toggle('light');
+  var btn = document.getElementById('theme-toggle');
+  btn.textContent = document.body.classList.contains('light') ? '\u2600' : '\u263E';
+  localStorage.setItem('sea-theme', document.body.classList.contains('light') ? 'light' : 'dark');
+}
+(function() {
+  if (localStorage.getItem('sea-theme') === 'light') {
+    document.body.classList.add('light');
+    var btn = document.getElementById('theme-toggle');
+    if (btn) btn.textContent = '\u2600';
+  }
+})();
+
+// ── Copy button for try-it boxes ─────────────────────────
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('try-it-copy')) {
+    var body = e.target.closest('.try-it').querySelector('.try-it-body');
+    if (body) {
+      navigator.clipboard.writeText(body.textContent.trim());
+      e.target.textContent = 'Copied!';
+      setTimeout(function() { e.target.textContent = 'Copy'; }, 1500);
+    }
+  }
+});
+
 // ── Sidebar group toggle ─────────────────────────────────
 function toggleGroup(el) {
   el.parentElement.classList.toggle('collapsed');

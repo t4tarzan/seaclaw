@@ -5,7 +5,10 @@ var NAV_DATA = [
     { id: "why-seaclaw", label: "Why Sea-Claw?" },
     { id: "who-is-it-for", label: "Who Is It For?" },
     { id: "quick-stats", label: "Quick Stats" },
-    { id: "how-it-compares", label: "How It Compares" }
+    { id: "how-it-compares", label: "How It Compares" },
+    { id: "claw-family", label: "The Claw Family" },
+    { id: "day-in-the-life", label: "A Day in the Life" },
+    { id: "how-message-travels", label: "How a Message Travels" }
   ]},
   { group: "start", title: "Getting Started", items: [
     { id: "prerequisites", label: "Prerequisites" },
@@ -95,6 +98,7 @@ var NAV_DATA = [
     { id: "dev-contributing", label: "Contributing" }
   ]},
   { group: "appendix", title: "Appendix", items: [
+    { id: "glossary", label: "Glossary (30+ Terms)" },
     { id: "error-codes", label: "Error Codes Reference" },
     { id: "grammar-types", label: "Grammar Types Reference" },
     { id: "db-schema", label: "Database Schema" },
