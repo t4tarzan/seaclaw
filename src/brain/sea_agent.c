@@ -706,13 +706,17 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
         SeaError err = SEA_ERR_IO;
         bool got_response = false;
 
-        /* Build headers array for streaming/Anthropic */
-        const char* all_hdrs[4] = {0};
+        /* Build headers array — OpenRouter needs extra headers */
+        const char* all_hdrs[6] = {0};
         u32 hi = 0;
         if (anthropic_hdrs) {
             for (const char** h = anthropic_hdrs; *h; h++) all_hdrs[hi++] = *h;
         } else if (auth_hdr) {
             all_hdrs[hi++] = auth_hdr;
+            if (cfg->provider == SEA_LLM_OPENROUTER) {
+                all_hdrs[hi++] = "HTTP-Referer: https://seaclawagent.com";
+                all_hdrs[hi++] = "X-Title: SeaClaw";
+            }
         }
         all_hdrs[hi] = NULL;
 
@@ -726,8 +730,8 @@ SeaAgentResult sea_agent_chat(SeaAgentConfig* cfg,
                                         sse_data_cb, &sse_ctx, arena, &resp);
         } else if (anthropic_hdrs) {
             err = sea_http_post_json_headers(cfg->api_url, body, anthropic_hdrs, arena, &resp);
-        } else if (auth_hdr) {
-            err = sea_http_post_json_auth(cfg->api_url, body, auth_hdr, arena, &resp);
+        } else if (hi > 0) {
+            err = sea_http_post_json_headers(cfg->api_url, body, all_hdrs, arena, &resp);
         } else {
             err = sea_http_post_json(cfg->api_url, body, arena, &resp);
         }

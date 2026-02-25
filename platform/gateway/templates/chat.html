@@ -181,7 +181,7 @@
             try {
                 // POST to the user's SeaClaw instance WebChat API
                 // In production, this routes through K8s ingress to the user's pod
-                const resp = await fetch(`/api/v1/agents/${username}/chat`, {
+                const resp = await fetch(`../api/v1/agents/${username}/chat`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: text }),

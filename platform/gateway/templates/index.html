@@ -185,11 +185,11 @@
             <!-- Create Agent Form -->
             <div class="panel">
                 <h2>Create Agent</h2>
-                <form id="createForm" onsubmit="createAgent(event)">
+                <form id="createForm" onsubmit="createAgent(event)" action="javascript:void(0)">
                     <div class="field">
                         <label>Username</label>
                         <input type="text" name="username" required
-                               pattern="[a-z0-9_-]+" minlength="2" maxlength="32"
+                               pattern="[a-z0-9_\-]+" minlength="2" maxlength="32"
                                placeholder="alice">
                     </div>
 
@@ -218,8 +218,8 @@
                     <div class="field">
                         <label>Model</label>
                         <input type="text" name="model"
-                               value="qwen/qwen-2.5-72b-instruct"
-                               placeholder="qwen/qwen-2.5-72b-instruct">
+                               value="moonshotai/kimi-k2"
+                               placeholder="moonshotai/kimi-k2">
                     </div>
 
                     <div class="field">
@@ -321,10 +321,10 @@
                                 </div>
                                 &middot; {{ info.model }}
                                 {% if info.has_telegram %} &middot; Telegram{% endif %}
-                                {% if info.has_webchat %} &middot; <a href="/chat/{{ username }}" style="color: var(--accent);">WebChat</a>{% endif %}
+                                {% if info.has_webchat %} &middot; <a href="chat/{{ username }}" style="color: var(--accent);">WebChat</a>{% endif %}
                             </div>
                             <div class="instance-actions">
-                                <button class="btn-sm" onclick="window.open('/chat/{{ username }}')">Chat</button>
+                                <button class="btn-sm" onclick="window.open('chat/{{ username }}')">Chat</button>
                                 <button class="btn-sm" onclick="viewStatus('{{ username }}')">Status</button>
                                 <button class="btn-sm danger" onclick="deleteAgent('{{ username }}')">Delete</button>
                             </div>
@@ -380,7 +380,7 @@
             };
 
             try {
-                const resp = await fetch('/api/v1/agents/create', {
+                const resp = await fetch('api/v1/agents/create', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data),
@@ -403,7 +403,7 @@
         async function deleteAgent(username) {
             if (!confirm(`Delete agent '${username}'? This cannot be undone.`)) return;
             try {
-                const resp = await fetch(`/api/v1/agents/${username}`, { method: 'DELETE' });
+                const resp = await fetch(`api/v1/agents/${username}`, { method: 'DELETE' });
                 if (resp.ok) {
                     showToast(`Agent '${username}' deleted`);
                     document.getElementById(`card-${username}`)?.remove();
@@ -418,7 +418,7 @@
 
         async function viewStatus(username) {
             try {
-                const resp = await fetch(`/api/v1/agents/${username}`);
+                const resp = await fetch(`api/v1/agents/${username}`);
                 const data = await resp.json();
                 alert(JSON.stringify(data, null, 2));
             } catch (err) {
@@ -429,7 +429,7 @@
         // Auto-refresh statuses every 10s
         setInterval(async () => {
             try {
-                const resp = await fetch('/api/v1/agents');
+                const resp = await fetch('api/v1/agents');
                 const data = await resp.json();
                 data.agents.forEach(a => {
                     const card = document.getElementById(`card-${a.username}`);

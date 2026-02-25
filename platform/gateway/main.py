@@ -71,7 +71,7 @@ class CreateAgentRequest(BaseModel):
     email: Optional[str] = None
     llm_provider: str = Field(default="openrouter")
     api_key: str = Field(..., min_length=5)
-    model: str = Field(default="qwen/qwen-2.5-72b-instruct")
+    model: str = Field(default="moonshotai/kimi-k2")
     soul: str = Field(default="alex")
     telegram_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
@@ -127,10 +127,10 @@ def create_seaclaw_pod(req: CreateAgentRequest) -> str:
     # Build config.json content
     api_url = PROVIDER_URLS.get(req.llm_provider, PROVIDER_URLS["openrouter"])
     config_data = {
-        "provider": req.llm_provider,
-        "api_key": req.api_key,
-        "api_url": api_url,
-        "model": req.model,
+        "llm_provider": req.llm_provider,
+        "llm_api_key": req.api_key,
+        "llm_api_url": api_url,
+        "llm_model": req.model,
         "system_prompt": None,
         "max_tokens": 4096,
         "temperature": 0.7,
@@ -230,9 +230,11 @@ def create_seaclaw_pod(req: CreateAgentRequest) -> str:
                     name="init-config",
                     image="busybox:1.36",
                     command=["sh", "-c",
+                        "mkdir -p /userdata && "
                         "cp /cfg/config.json /userdata/config.json && "
                         "cp /soul/SOUL.md /userdata/SOUL.md && "
-                        "echo 'Config initialized'"
+                        "echo 'Config initialized' && "
+                        "ls -la /userdata/"
                     ],
                     volume_mounts=[
                         client.V1VolumeMount(
