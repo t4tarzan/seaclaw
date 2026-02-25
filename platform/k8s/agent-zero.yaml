@@ -1,0 +1,89 @@
+---
+# Shared Agent Zero — Kali Linux container for complex task delegation
+# All SeaClaw instances share this single Agent Zero pod
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-zero
+  namespace: seaclaw-platform
+  labels:
+    app: agent-zero
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-zero
+  template:
+    metadata:
+      labels:
+        app: agent-zero
+    spec:
+      containers:
+        - name: agent-zero
+          image: seazero/agent-zero:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: AGENT_ID
+              value: "agent-0"
+            - name: AGENT_PORT
+              value: "8080"
+            - name: OPENAI_API_BASE
+              value: "http://proxy-svc.seaclaw-platform.svc.cluster.local:7432"
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: seaclaw-secrets
+                  key: seazero-bridge-token
+            - name: SEACLAW_CALLBACK_URL
+              value: "http://proxy-svc.seaclaw-platform.svc.cluster.local:7432"
+            - name: LOG_LEVEL
+              value: "info"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          volumeMounts:
+            - name: shared-workspace
+              mountPath: /agent/shared
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: shared-workspace
+          persistentVolumeClaim:
+            claimName: seaclaw-shared-workspace
+---
+# Agent Zero Service (ClusterIP — only accessible within cluster)
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-zero-svc
+  namespace: seaclaw-platform
+spec:
+  selector:
+    app: agent-zero
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  type: ClusterIP

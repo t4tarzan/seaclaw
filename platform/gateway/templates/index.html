@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SeaClaw Platform</title>
+    <style>
+        :root {
+            --bg: #0a0e17;
+            --surface: #111827;
+            --surface2: #1a2234;
+            --border: #2a3548;
+            --text: #e2e8f0;
+            --text-dim: #8892a4;
+            --accent: #06b6d4;
+            --accent-hover: #22d3ee;
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        .container { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+        /* Header */
+        .header { text-align: center; margin-bottom: 2.5rem; }
+        .header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .header h1 span { color: var(--accent); }
+        .header p { color: var(--text-dim); font-size: 0.95rem; }
+        .stats {
+            display: flex; gap: 2rem; justify-content: center;
+            margin-top: 1rem; font-size: 0.85rem; color: var(--text-dim);
+        }
+        .stats span { color: var(--accent); font-weight: 600; }
+
+        /* Two-column layout */
+        .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+        @media (max-width: 768px) { .layout { grid-template-columns: 1fr; } }
+
+        /* Form panel */
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        .panel h2 {
+            font-size: 1.1rem; font-weight: 600;
+            margin-bottom: 1.25rem; padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* Form elements */
+        .field { margin-bottom: 1rem; }
+        .field label {
+            display: block; font-size: 0.8rem; font-weight: 500;
+            color: var(--text-dim); margin-bottom: 0.35rem; text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .field input, .field select, .field textarea {
+            width: 100%; padding: 0.6rem 0.75rem;
+            background: var(--surface2); border: 1px solid var(--border);
+            border-radius: 8px; color: var(--text); font-size: 0.9rem;
+            transition: border-color 0.2s;
+        }
+        .field input:focus, .field select:focus, .field textarea:focus {
+            outline: none; border-color: var(--accent);
+        }
+        .field input::placeholder { color: var(--text-dim); opacity: 0.6; }
+        .field textarea { resize: vertical; min-height: 60px; font-family: monospace; font-size: 0.8rem; }
+
+        /* Radio group for souls */
+        .soul-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+        .soul-option {
+            display: flex; align-items: center; gap: 0.5rem;
+            padding: 0.5rem 0.75rem; background: var(--surface2);
+            border: 1px solid var(--border); border-radius: 8px;
+            cursor: pointer; transition: border-color 0.2s;
+        }
+        .soul-option:hover { border-color: var(--accent); }
+        .soul-option input[type="radio"] { accent-color: var(--accent); }
+        .soul-option .soul-name { font-size: 0.85rem; font-weight: 500; }
+        .soul-option .soul-desc { font-size: 0.7rem; color: var(--text-dim); }
+
+        /* Checkboxes */
+        .checkbox-row {
+            display: flex; align-items: center; gap: 0.5rem;
+            margin-bottom: 0.5rem; font-size: 0.85rem;
+        }
+        .checkbox-row input[type="checkbox"] { accent-color: var(--accent); }
+
+        /* Button */
+        .btn-create {
+            width: 100%; padding: 0.75rem; margin-top: 1rem;
+            background: var(--accent); color: #000; font-weight: 600;
+            font-size: 0.95rem; border: none; border-radius: 8px;
+            cursor: pointer; transition: background 0.2s;
+        }
+        .btn-create:hover { background: var(--accent-hover); }
+        .btn-create:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Instance list */
+        .instance-list { display: flex; flex-direction: column; gap: 0.75rem; }
+        .instance-card {
+            background: var(--surface2); border: 1px solid var(--border);
+            border-radius: 8px; padding: 1rem;
+        }
+        .instance-card .top {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        .instance-card .username { font-weight: 600; font-size: 0.95rem; }
+        .instance-card .soul-badge {
+            font-size: 0.7rem; padding: 0.15rem 0.5rem;
+            background: var(--accent); color: #000; border-radius: 999px;
+            font-weight: 600; text-transform: uppercase;
+        }
+        .instance-card .meta { font-size: 0.8rem; color: var(--text-dim); }
+        .instance-card .status {
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            font-size: 0.8rem; font-weight: 500;
+        }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+        }
+        .status-dot.running { background: var(--success); }
+        .status-dot.starting { background: var(--warning); }
+        .status-dot.error { background: var(--error); }
+        .status-dot.unknown { background: var(--text-dim); }
+
+        .instance-actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+        .btn-sm {
+            padding: 0.35rem 0.75rem; font-size: 0.75rem;
+            border: 1px solid var(--border); border-radius: 6px;
+            background: transparent; color: var(--text); cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+        .btn-sm.danger:hover { border-color: var(--error); color: var(--error); }
+
+        .empty-state {
+            text-align: center; padding: 2rem;
+            color: var(--text-dim); font-size: 0.9rem;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed; bottom: 1.5rem; right: 1.5rem;
+            padding: 0.75rem 1.25rem; border-radius: 8px;
+            font-size: 0.85rem; font-weight: 500;
+            transform: translateY(100px); opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.success { background: var(--success); color: #000; }
+        .toast.error { background: var(--error); color: #fff; }
+
+        /* Footer */
+        .footer {
+            text-align: center; margin-top: 2rem;
+            font-size: 0.75rem; color: var(--text-dim);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><span>SeaClaw</span> Platform</h1>
+            <p>Deploy your own AI agent in seconds. 203 KB binary. 28 MB RAM. 58 tools.</p>
+            <div class="stats">
+                <div><span>203 KB</span> binary</div>
+                <div><span>28 MB</span> RAM</div>
+                <div><span>58</span> tools</div>
+                <div><span>&lt;50 ms</span> startup</div>
+            </div>
+        </div>
+
+        <div class="layout">
+            <!-- Create Agent Form -->
+            <div class="panel">
+                <h2>Create Agent</h2>
+                <form id="createForm" onsubmit="createAgent(event)">
+                    <div class="field">
+                        <label>Username</label>
+                        <input type="text" name="username" required
+                               pattern="[a-z0-9_-]+" minlength="2" maxlength="32"
+                               placeholder="alice">
+                    </div>
+
+                    <div class="field">
+                        <label>Email (optional)</label>
+                        <input type="email" name="email" placeholder="alice@example.com">
+                    </div>
+
+                    <div class="field">
+                        <label>LLM Provider</label>
+                        <select name="llm_provider">
+                            <option value="openrouter">OpenRouter</option>
+                            <option value="openai">OpenAI</option>
+                            <option value="anthropic">Anthropic</option>
+                            <option value="google">Google Gemini</option>
+                            <option value="ollama">Ollama (local)</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>API Key</label>
+                        <input type="password" name="api_key" required
+                               placeholder="sk-or-v1-...">
+                    </div>
+
+                    <div class="field">
+                        <label>Model</label>
+                        <input type="text" name="model"
+                               value="qwen/qwen-2.5-72b-instruct"
+                               placeholder="qwen/qwen-2.5-72b-instruct">
+                    </div>
+
+                    <div class="field">
+                        <label>Agent Soul</label>
+                        <div class="soul-grid">
+                            <label class="soul-option">
+                                <input type="radio" name="soul" value="eva">
+                                <div>
+                                    <div class="soul-name">Eva</div>
+                                    <div class="soul-desc">Analyst, precise</div>
+                                </div>
+                            </label>
+                            <label class="soul-option">
+                                <input type="radio" name="soul" value="alex" checked>
+                                <div>
+                                    <div class="soul-name">Alex</div>
+                                    <div class="soul-desc">Developer, technical</div>
+                                </div>
+                            </label>
+                            <label class="soul-option">
+                                <input type="radio" name="soul" value="tom">
+                                <div>
+                                    <div class="soul-name">Tom</div>
+                                    <div class="soul-desc">Creative, expressive</div>
+                                </div>
+                            </label>
+                            <label class="soul-option">
+                                <input type="radio" name="soul" value="sarah">
+                                <div>
+                                    <div class="soul-name">Sarah</div>
+                                    <div class="soul-desc">Communicator, clear</div>
+                                </div>
+                            </label>
+                            <label class="soul-option">
+                                <input type="radio" name="soul" value="max">
+                                <div>
+                                    <div class="soul-name">Max</div>
+                                    <div class="soul-desc">Generalist, balanced</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label>Telegram Bot Token (optional)</label>
+                        <input type="text" name="telegram_token"
+                               placeholder="123456:ABC-DEF...">
+                    </div>
+
+                    <div class="field">
+                        <label>Telegram Chat ID (optional)</label>
+                        <input type="text" name="telegram_chat_id"
+                               placeholder="Leave empty for any chat">
+                    </div>
+
+                    <div class="field">
+                        <label>Security</label>
+                        <div class="checkbox-row">
+                            <input type="checkbox" name="enable_pii" checked>
+                            PII Firewall (redact emails, phones, SSNs)
+                        </div>
+                        <div class="checkbox-row">
+                            <input type="checkbox" name="enable_shield" checked>
+                            Grammar Shield (injection detection)
+                        </div>
+                        <div class="checkbox-row">
+                            <input type="checkbox" name="enable_agent_zero" checked>
+                            Agent Zero (complex task delegation)
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label>Daily Token Budget</label>
+                        <input type="number" name="token_budget"
+                               value="100000" min="1000" max="1000000">
+                    </div>
+
+                    <button type="submit" class="btn-create" id="btnCreate">
+                        Create My Agent
+                    </button>
+                </form>
+            </div>
+
+            <!-- Active Agents -->
+            <div class="panel">
+                <h2>Active Agents ({{ instances | length }}/{{ max_instances }})</h2>
+                <div class="instance-list" id="instanceList">
+                    {% if instances %}
+                        {% for username, info in instances.items() %}
+                        <div class="instance-card" id="card-{{ username }}">
+                            <div class="top">
+                                <span class="username">{{ username }}</span>
+                                <span class="soul-badge">{{ info.soul }}</span>
+                            </div>
+                            <div class="meta">
+                                <div class="status">
+                                    <span class="status-dot {{ info.status }}"></span>
+                                    {{ info.status }}
+                                </div>
+                                &middot; {{ info.model }}
+                                {% if info.has_telegram %} &middot; Telegram{% endif %}
+                                {% if info.has_webchat %} &middot; <a href="/chat/{{ username }}" style="color: var(--accent);">WebChat</a>{% endif %}
+                            </div>
+                            <div class="instance-actions">
+                                <button class="btn-sm" onclick="window.open('/chat/{{ username }}')">Chat</button>
+                                <button class="btn-sm" onclick="viewStatus('{{ username }}')">Status</button>
+                                <button class="btn-sm danger" onclick="deleteAgent('{{ username }}')">Delete</button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state">
+                            No agents running yet.<br>Create one to get started.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            SeaClaw Platform v0.1 &middot;
+            203 KB C binary &middot; Grammar Shield + PII Firewall &middot;
+            Agent Zero (Kali Docker) &middot; Kubernetes Orchestrated
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        function showToast(msg, type = 'success') {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = `toast ${type} show`;
+            setTimeout(() => t.classList.remove('show'), 4000);
+        }
+
+        async function createAgent(e) {
+            e.preventDefault();
+            const form = e.target;
+            const btn = document.getElementById('btnCreate');
+            btn.disabled = true;
+            btn.textContent = 'Creating...';
+
+            const data = {
+                username: form.username.value,
+                email: form.email.value || null,
+                llm_provider: form.llm_provider.value,
+                api_key: form.api_key.value,
+                model: form.model.value,
+                soul: form.querySelector('input[name="soul"]:checked').value,
+                telegram_token: form.telegram_token.value || null,
+                telegram_chat_id: form.telegram_chat_id.value || null,
+                enable_webchat: true,
+                enable_pii: form.enable_pii.checked,
+                enable_shield: form.enable_shield.checked,
+                enable_agent_zero: form.enable_agent_zero.checked,
+                token_budget: parseInt(form.token_budget.value),
+            };
+
+            try {
+                const resp = await fetch('/api/v1/agents/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                });
+                const result = await resp.json();
+                if (resp.ok) {
+                    showToast(`Agent '${data.username}' created!`);
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showToast(result.detail || 'Creation failed', 'error');
+                }
+            } catch (err) {
+                showToast('Network error: ' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Create My Agent';
+            }
+        }
+
+        async function deleteAgent(username) {
+            if (!confirm(`Delete agent '${username}'? This cannot be undone.`)) return;
+            try {
+                const resp = await fetch(`/api/v1/agents/${username}`, { method: 'DELETE' });
+                if (resp.ok) {
+                    showToast(`Agent '${username}' deleted`);
+                    document.getElementById(`card-${username}`)?.remove();
+                } else {
+                    const r = await resp.json();
+                    showToast(r.detail || 'Delete failed', 'error');
+                }
+            } catch (err) {
+                showToast('Network error: ' + err.message, 'error');
+            }
+        }
+
+        async function viewStatus(username) {
+            try {
+                const resp = await fetch(`/api/v1/agents/${username}`);
+                const data = await resp.json();
+                alert(JSON.stringify(data, null, 2));
+            } catch (err) {
+                showToast('Failed to get status', 'error');
+            }
+        }
+
+        // Auto-refresh statuses every 10s
+        setInterval(async () => {
+            try {
+                const resp = await fetch('/api/v1/agents');
+                const data = await resp.json();
+                data.agents.forEach(a => {
+                    const card = document.getElementById(`card-${a.username}`);
+                    if (card) {
+                        const dot = card.querySelector('.status-dot');
+                        if (dot) {
+                            dot.className = `status-dot ${a.status}`;
+                            dot.nextSibling.textContent = ` ${a.status}`;
+                        }
+                    }
+                });
+            } catch {}
+        }, 10000);
+    </script>
+</body>
+</html>

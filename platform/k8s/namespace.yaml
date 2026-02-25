@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: seaclaw-platform
+  labels:
+    app.kubernetes.io/name: seaclaw-platform
+    app.kubernetes.io/part-of: seaclaw

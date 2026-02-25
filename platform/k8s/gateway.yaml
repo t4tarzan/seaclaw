@@ -1,0 +1,130 @@
+---
+# Gateway ServiceAccount — needs permissions to create/delete pods
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gateway-sa
+  namespace: seaclaw-platform
+---
+# RBAC: allow gateway to manage pods, services, configmaps in its namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gateway-role
+  namespace: seaclaw-platform
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps"]
+    verbs: ["get", "list", "create", "delete", "update", "patch", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gateway-rolebinding
+  namespace: seaclaw-platform
+subjects:
+  - kind: ServiceAccount
+    name: gateway-sa
+    namespace: seaclaw-platform
+roleRef:
+  kind: Role
+  name: gateway-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# Gateway Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: seaclaw-platform
+  labels:
+    app: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      serviceAccountName: gateway-sa
+      containers:
+        - name: gateway
+          image: seaclaw-gateway:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8090
+              name: http
+          env:
+            - name: SEACLAW_NAMESPACE
+              value: "seaclaw-platform"
+            - name: SEACLAW_IMAGE
+              value: "seaclaw-instance:latest"
+            - name: MAX_INSTANCES
+              value: "5"
+            - name: DATA_DIR
+              value: "/data/platform"
+            - name: LOG_LEVEL
+              value: "INFO"
+          volumeMounts:
+            - name: gateway-data
+              mountPath: /data/platform
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            initialDelaySeconds: 3
+            periodSeconds: 10
+      volumes:
+        - name: gateway-data
+          persistentVolumeClaim:
+            claimName: seaclaw-gateway-data
+---
+# Gateway Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-svc
+  namespace: seaclaw-platform
+spec:
+  selector:
+    app: gateway
+  ports:
+    - port: 8090
+      targetPort: 8090
+      name: http
+  type: ClusterIP
+---
+# NodePort for external access (demo — use Ingress for production)
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-external
+  namespace: seaclaw-platform
+spec:
+  selector:
+    app: gateway
+  ports:
+    - port: 8090
+      targetPort: 8090
+      nodePort: 30090
+      name: http
+  type: NodePort

@@ -1,0 +1,42 @@
+---
+# PVC for per-user data (config, DB, memory files)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seaclaw-user-data
+  namespace: seaclaw-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+# PVC for shared collaborative workspace
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seaclaw-shared-workspace
+  namespace: seaclaw-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+# PVC for gateway data (instance registry)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seaclaw-gateway-data
+  namespace: seaclaw-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi

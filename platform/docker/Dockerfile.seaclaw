@@ -1,0 +1,49 @@
+# SeaClaw Instance — Multi-stage build
+# Stage 1: Compile C binary
+# Stage 2: Minimal runtime image
+
+# ── Build Stage ──────────────────────────────────────────────
+FROM ubuntu:24.04 AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc make libcurl4-openssl-dev libsqlite3-dev libreadline-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY . .
+
+# Release build — stripped, optimized, no sanitizers
+RUN make release ARCH=x86 2>&1 | tail -5
+
+# ── Runtime Stage ────────────────────────────────────────────
+FROM ubuntu:24.04 AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcurl4t64 libsqlite3-0 libreadline8t64 \
+    ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -r -s /bin/false seaclaw \
+    && mkdir -p /data /workspace \
+    && chown seaclaw:seaclaw /data /workspace
+
+COPY --from=builder /build/dist/sea_claw /usr/local/bin/sea_claw
+RUN chmod +x /usr/local/bin/sea_claw
+
+# Default instance directory
+VOLUME ["/data", "/workspace"]
+
+# Environment variables (overridden per-instance by K8s)
+ENV SEA_CONFIG=/data/config.json \
+    SEA_DB=/data/seaclaw.db \
+    SEA_WORKSPACE=/workspace \
+    SEA_LOG_LEVEL=info
+
+# Health check — verify process is alive
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD pgrep sea_claw || exit 1
+
+USER seaclaw
+
+ENTRYPOINT ["sea_claw"]
+CMD ["--config", "/data/config.json", "--gateway"]

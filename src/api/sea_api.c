@@ -67,11 +67,16 @@ static void send_json_error(int fd, int status, const char* msg) {
 
 static const char* extract_json_string(const char* json, const char* key,
                                         char* out, u32 out_size) {
+    /* Try both "key":"val" and "key": "val" (with optional space) */
     char needle[64];
-    snprintf(needle, sizeof(needle), "\"%s\":\"", key);
+    snprintf(needle, sizeof(needle), "\"%s\":", key);
     const char* p = strstr(json, needle);
     if (!p) return NULL;
     p += strlen(needle);
+    /* Skip whitespace between : and opening quote */
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p != '"') return NULL;
+    p++; /* skip opening quote */
 
     u32 i = 0;
     while (*p && *p != '"' && i < out_size - 1) {
@@ -97,18 +102,37 @@ static void handle_connection(int client_fd) {
     char buf[API_MAX_HEADERS + API_MAX_BODY];
     ssize_t total = 0;
 
-    /* Read request (simple: read until we have full body) */
+    /* Read headers first */
     while (total < (ssize_t)sizeof(buf) - 1) {
         ssize_t n = read(client_fd, buf + total, (size_t)(sizeof(buf) - 1 - (size_t)total));
         if (n <= 0) break;
         total += n;
         buf[total] = '\0';
-
-        /* Check if we have the full request (Content-Length or end of headers for GET) */
         if (strstr(buf, "\r\n\r\n")) break;
     }
 
     if (total <= 0) { close(client_fd); return; }
+
+    /* If POST, read remaining body based on Content-Length */
+    char* hdr_end = strstr(buf, "\r\n\r\n");
+    if (hdr_end) {
+        const char* cl_hdr = strcasestr(buf, "content-length:");
+        if (cl_hdr) {
+            int content_len = atoi(cl_hdr + 15);
+            if (content_len > 0 && content_len < API_MAX_BODY) {
+                ssize_t body_received = total - (ssize_t)(hdr_end + 4 - buf);
+                while (body_received < content_len &&
+                       total < (ssize_t)sizeof(buf) - 1) {
+                    ssize_t n = read(client_fd, buf + total,
+                                     (size_t)(sizeof(buf) - 1 - (size_t)total));
+                    if (n <= 0) break;
+                    total += n;
+                    body_received += n;
+                    buf[total] = '\0';
+                }
+            }
+        }
+    }
 
     /* Parse method + path */
     char method[8] = {0}, path[128] = {0};
@@ -252,10 +276,14 @@ int sea_api_start(const SeaApiConfig* cfg) {
     int opt = 1;
     setsockopt(s_listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
+    /* Bind to 0.0.0.0 if SEA_API_BIND_ALL is set (for containers),
+     * otherwise loopback only for security */
+    const char* bind_all = getenv("SEA_API_BIND_ALL");
     struct sockaddr_in addr = {
         .sin_family = AF_INET,
         .sin_port = htons(s_api_cfg.port),
-        .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+        .sin_addr.s_addr = (bind_all && *bind_all) ? htonl(INADDR_ANY)
+                                                     : htonl(INADDR_LOOPBACK),
     };
 
     if (bind(s_listen_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
