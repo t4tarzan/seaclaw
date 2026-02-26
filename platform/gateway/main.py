@@ -241,9 +241,13 @@ def create_seaclaw_pod(req: CreateAgentRequest) -> str:
     }
 
     # Build environment variables
+    gw_svc_url = f"http://gateway-svc.{NAMESPACE}.svc.cluster.local:8090"
     env_vars = [
-        client.V1EnvVar(name="SEA_LOG_LEVEL", value="info"),
+        client.V1EnvVar(name="SEA_LOG_LEVEL",    value="info"),
         client.V1EnvVar(name="SEA_API_BIND_ALL", value="1"),
+        client.V1EnvVar(name="SEA_USERNAME",     value=req.username),
+        client.V1EnvVar(name="SEA_GATEWAY_URL",  value=gw_svc_url),
+        client.V1EnvVar(name="SEA_DB",           value="/userdata/seaclaw.db"),
     ]
     if req.telegram_token:
         env_vars.append(client.V1EnvVar(name="TELEGRAM_BOT_TOKEN", value=req.telegram_token))
@@ -778,6 +782,156 @@ async def update_platform_task(task_id: str, body: dict):
     conn.commit()
     conn.close()
     return {"status": "updated", "task_id": task_id}
+
+
+# ── Sprint 3: Agent Swarm ─────────────────────────────────────
+
+class WorkerRequest(BaseModel):
+    task: str = Field(..., min_length=1, max_length=4096)
+    worker_name: Optional[str] = None
+    soul: str = Field(default="alex")
+    ttl_seconds: int = Field(default=300, ge=30, le=3600)
+
+class RelayRequest(BaseModel):
+    from_agent: str
+    message: str = Field(..., min_length=1, max_length=8192)
+    token: Optional[str] = None
+
+@app.post("/api/v1/agents/{username}/workers")
+async def spawn_worker(username: str, req: WorkerRequest):
+    """Spawn an ephemeral worker pod for a coordinator agent's swarm task."""
+    instances = _load_instances()
+    if username not in instances:
+        raise HTTPException(404, f"Agent '{username}' not found")
+
+    info = instances[username]
+    if not info.get("swarm_mode", False):
+        raise HTTPException(403, "Swarm mode is not enabled for this agent. Enable it in Settings.")
+
+    import re, time
+    worker_id = req.worker_name or f"w{int(time.time()) % 100000}"
+    worker_id = re.sub(r"[^a-z0-9-]", "-", worker_id.lower())[:20]
+    worker_username = f"{username}-{worker_id}"
+
+    # Workers inherit coordinator's LLM config — read from coordinator's ConfigMap
+    try:
+        cm = v1.read_namespaced_config_map(
+            name=f"seaclaw-config-{username}", namespace=NAMESPACE)
+        coord_config = json.loads(cm.data["config.json"])
+    except Exception:
+        raise HTTPException(503, "Could not read coordinator config")
+
+    # Build a minimal worker CreateAgentRequest
+    worker_req = CreateAgentRequest(
+        username=worker_username,
+        llm_provider=coord_config.get("llm_provider", "openrouter"),
+        api_key=coord_config.get("llm_api_key", ""),
+        model=coord_config.get("llm_model", "moonshotai/kimi-k2"),
+        soul=req.soul,
+        enable_webchat=False,
+        enable_agent_zero=False,
+        token_budget=10000,
+    )
+
+    pod_name = create_seaclaw_pod(worker_req)
+
+    # Register worker in parent's instance entry
+    workers = info.get("workers", {})
+    workers[worker_username] = {
+        "task": req.task,
+        "soul": req.soul,
+        "pod_name": pod_name,
+        "spawned_at": datetime.utcnow().isoformat(),
+        "ttl_seconds": req.ttl_seconds,
+        "status": "starting",
+    }
+    info["workers"] = workers
+    instances[username] = info
+    _save_instances(instances)
+
+    # Also register worker as standalone instance so it can receive chat
+    instances[worker_username] = {
+        "username": worker_username,
+        "soul": req.soul,
+        "llm_provider": coord_config.get("llm_provider", "openrouter"),
+        "model": coord_config.get("llm_model", "moonshotai/kimi-k2"),
+        "has_telegram": False,
+        "has_webchat": False,
+        "enable_agent_zero": False,
+        "token_budget": 10000,
+        "pod_name": pod_name,
+        "created_at": datetime.utcnow().isoformat(),
+        "status": "starting",
+        "is_worker": True,
+        "coordinator": username,
+    }
+    _save_instances(instances)
+
+    logger.info(f"Spawned worker '{worker_username}' for coordinator '{username}'")
+    return {
+        "status": "spawning",
+        "worker_username": worker_username,
+        "pod_name": pod_name,
+        "task": req.task,
+        "ttl_seconds": req.ttl_seconds,
+    }
+
+
+@app.delete("/api/v1/agents/{username}/workers/{worker_id}")
+async def terminate_worker(username: str, worker_id: str):
+    """Terminate an ephemeral worker pod."""
+    worker_username = f"{username}-{worker_id}"
+    instances = _load_instances()
+
+    # Clean up worker pod
+    delete_seaclaw_pod(worker_username)
+
+    # Remove from coordinator's worker list
+    if username in instances:
+        workers = instances[username].get("workers", {})
+        workers.pop(worker_username, None)
+        instances[username]["workers"] = workers
+
+    # Remove worker standalone entry
+    instances.pop(worker_username, None)
+    _save_instances(instances)
+
+    return {"status": "terminated", "worker": worker_username}
+
+
+@app.get("/api/v1/agents/{username}/workers")
+async def list_workers(username: str):
+    """List active workers for a coordinator agent."""
+    instances = _load_instances()
+    if username not in instances:
+        raise HTTPException(404, f"Agent '{username}' not found")
+
+    workers = instances[username].get("workers", {})
+    result = []
+    for wname, winfo in workers.items():
+        pod_status = get_pod_status(wname)
+        status = "running" if pod_status and pod_status.get("ready") else \
+                 pod_status["phase"].lower() if pod_status else "gone"
+        result.append({**winfo, "username": wname, "status": status})
+    return {"coordinator": username, "workers": result, "count": len(result)}
+
+
+@app.post("/api/v1/agents/{username}/relay")
+async def relay_message(username: str, req: RelayRequest):
+    """Relay a message from one agent to another (used by swarm coordinator).
+    The from_agent must be a known worker of username OR username itself."""
+    instances = _load_instances()
+    if username not in instances:
+        raise HTTPException(404, f"Agent '{username}' not found")
+
+    # Validate: from_agent must be the coordinator or one of its workers
+    info = instances[username]
+    allowed = {username} | set(info.get("workers", {}).keys())
+    if req.from_agent not in allowed:
+        raise HTTPException(403, f"Agent '{req.from_agent}' is not authorized to relay to '{username}'")
+
+    result = await _proxy_chat(username, req.message)
+    return {"to": username, "from": req.from_agent, "response": result}
 
 
 @app.post("/api/v1/agents/{username}/chat")
