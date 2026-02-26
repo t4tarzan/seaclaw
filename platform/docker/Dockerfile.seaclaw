@@ -21,7 +21,7 @@ FROM ubuntu:24.04 AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4t64 libsqlite3-0 libreadline8t64 \
-    ca-certificates curl \
+    ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -r -s /bin/false seaclaw \
     && mkdir -p /data /workspace \

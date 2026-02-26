@@ -74,6 +74,12 @@ extern SeaError tool_google_calendar_today(SeaSlice args, SeaArena* arena, SeaSl
 extern SeaError tool_google_drive_search(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_google_contacts_search(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_google_tasks_list(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_git_clone(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_git_status(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_git_pull(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_git_log(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_git_diff(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_git_checkout(SeaSlice args, SeaArena* arena, SeaSlice* output);
 
 /* ── The Static Registry ──────────────────────────────────── */
 
@@ -141,6 +147,12 @@ static const SeaTool s_registry[] = {
     {61, "google_drive_search",    "Search Google Drive via gogcli. Args: search query",  tool_google_drive_search },
     {62, "google_contacts_search", "Search Google Contacts via gogcli. Args: query",      tool_google_contacts_search },
     {63, "google_tasks_list",      "List Google Tasks via gogcli. Args: (none)",          tool_google_tasks_list },
+    {64, "git_clone",    "Clone a git repo. Args: <url> [branch] [dest_dir]",     tool_git_clone },
+    {65, "git_status",   "Git status of a repo. Args: <repo_path>",               tool_git_status },
+    {66, "git_pull",     "Git pull latest changes. Args: <repo_path>",            tool_git_pull },
+    {67, "git_log",      "Git commit log. Args: <repo_path> [count]",             tool_git_log },
+    {68, "git_diff",     "Git diff --stat HEAD. Args: <repo_path>",               tool_git_diff },
+    {69, "git_checkout", "Git checkout branch. Args: <repo_path> <branch>",       tool_git_checkout },
 };
 
 static const u32 s_static_count = sizeof(s_registry) / sizeof(s_registry[0]);
