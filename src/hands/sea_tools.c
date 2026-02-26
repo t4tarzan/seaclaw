@@ -80,6 +80,10 @@ extern SeaError tool_git_pull(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_git_log(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_git_diff(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_git_checkout(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_pm_task(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_pm_project(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_pm_milestone(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_pm_report(SeaSlice args, SeaArena* arena, SeaSlice* output);
 
 /* ── The Static Registry ──────────────────────────────────── */
 
@@ -153,6 +157,10 @@ static const SeaTool s_registry[] = {
     {67, "git_log",      "Git commit log. Args: <repo_path> [count]",             tool_git_log },
     {68, "git_diff",     "Git diff --stat HEAD. Args: <repo_path>",               tool_git_diff },
     {69, "git_checkout", "Git checkout branch. Args: <repo_path> <branch>",       tool_git_checkout },
+    {70, "pm_task",      "Project tasks. Args: create|list|update|done + params",  tool_pm_task },
+    {71, "pm_project",   "Manage projects. Args: create|list|status + params",     tool_pm_project },
+    {72, "pm_milestone", "Track milestones. Args: set|list|done + params",         tool_pm_milestone },
+    {73, "pm_report",    "Generate project report. Args: <project_or_all>",        tool_pm_report },
 };
 
 static const u32 s_static_count = sizeof(s_registry) / sizeof(s_registry[0]);

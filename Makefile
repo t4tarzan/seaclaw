@@ -212,7 +212,8 @@ HANDS_SRC := \
 	src/hands/impl/tool_message.c \
 	src/hands/impl/tool_recall.c \
 	src/hands/impl/tool_google.c \
-	src/hands/impl/tool_git.c
+	src/hands/impl/tool_git.c \
+	src/hands/impl/tool_pm.c
 
 SEAZERO_SRC := \
 	seazero/bridge/sea_zero.c \
