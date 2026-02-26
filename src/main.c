@@ -1704,6 +1704,10 @@ extern void sea_channel_telegram_destroy(SeaChannel* ch);
 extern SeaChannel* sea_channel_slack_create(const char* webhook_url);
 extern void sea_channel_slack_destroy(SeaChannel* ch);
 
+/* Forward declaration for Discord channel create */
+extern SeaChannel* sea_channel_discord_create(const char* bot_token, const char* channel_id);
+extern void sea_channel_discord_destroy(SeaChannel* ch);
+
 static void* gateway_agent_thread(void* arg) {
     (void)arg;
     SEA_LOG_INFO("GATEWAY", "Agent loop started (bus consumer)");
@@ -1833,6 +1837,19 @@ static int run_gateway(const char* tg_token, i64 tg_chat_id) {
             if (slack_ch) {
                 sea_channel_manager_register(&s_chan_mgr, slack_ch);
                 SEA_LOG_INFO("GATEWAY", "Slack channel registered (webhook)");
+            }
+        }
+    }
+
+    /* Register Discord channel if bot token + channel ID are configured */
+    {
+        const char* dc_token = getenv("DISCORD_BOT_TOKEN");
+        const char* dc_chan  = getenv("DISCORD_CHANNEL_ID");
+        if (dc_token && *dc_token && dc_chan && *dc_chan) {
+            SeaChannel* dc_ch = sea_channel_discord_create(dc_token, dc_chan);
+            if (dc_ch) {
+                sea_channel_manager_register(&s_chan_mgr, dc_ch);
+                SEA_LOG_INFO("GATEWAY", "Discord channel registered (channel=%s)", dc_chan);
             }
         }
     }

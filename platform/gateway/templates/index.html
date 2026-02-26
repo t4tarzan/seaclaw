@@ -452,7 +452,7 @@
                         </div>
 
                         <button type="button" class="collapsible-toggle" onclick="toggleAdvanced()">
-                            ▸ Advanced options (Telegram, Security, Budget)
+                            ▸ Advanced options (Telegram, Discord, Slack, Security, Budget)
                         </button>
                         <div class="collapsible-body" id="advancedOpts">
                             <div class="field-row">
@@ -464,6 +464,20 @@
                                     <label>Telegram Chat ID</label>
                                     <input type="text" name="telegram_chat_id" placeholder="(any chat)">
                                 </div>
+                            </div>
+                            <div class="field-row">
+                                <div class="field">
+                                    <label>Discord Bot Token</label>
+                                    <input type="text" name="discord_bot_token" placeholder="MTxxxxxxx.Gyyyyy...">
+                                </div>
+                                <div class="field">
+                                    <label>Discord Channel ID</label>
+                                    <input type="text" name="discord_channel_id" placeholder="1234567890123456789">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label>Slack Webhook URL</label>
+                                <input type="text" name="slack_webhook_url" placeholder="https://hooks.slack.com/services/T.../B.../...">
                             </div>
                             <div class="field">
                                 <label>Security</label>
@@ -788,6 +802,9 @@
                 soul: form.querySelector('input[name="soul"]:checked').value,
                 telegram_token: form.telegram_token?.value || null,
                 telegram_chat_id: form.telegram_chat_id?.value || null,
+                discord_bot_token: form.discord_bot_token?.value || null,
+                discord_channel_id: form.discord_channel_id?.value || null,
+                slack_webhook_url: form.slack_webhook_url?.value || null,
                 enable_webchat: true,
                 enable_pii: form.enable_pii?.checked ?? true,
                 enable_shield: form.enable_shield?.checked ?? true,

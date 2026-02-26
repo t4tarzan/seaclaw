@@ -108,7 +108,8 @@ BUS_SRC := \
 CHANNEL_SRC := \
 	src/channels/sea_channel.c \
 	src/channels/channel_telegram.c \
-	src/channels/channel_slack.c
+	src/channels/channel_slack.c \
+	src/channels/channel_discord.c
 
 SESSION_SRC := \
 	src/session/sea_session.c
@@ -214,7 +215,8 @@ HANDS_SRC := \
 	src/hands/impl/tool_google.c \
 	src/hands/impl/tool_git.c \
 	src/hands/impl/tool_pm.c \
-	src/hands/impl/tool_spawn_worker.c
+	src/hands/impl/tool_spawn_worker.c \
+	src/hands/impl/tool_voice.c
 
 SEAZERO_SRC := \
 	seazero/bridge/sea_zero.c \

@@ -87,6 +87,7 @@ extern SeaError tool_pm_report(SeaSlice args, SeaArena* arena, SeaSlice* output)
 extern SeaError tool_swarm_spawn(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_swarm_relay(SeaSlice args, SeaArena* arena, SeaSlice* output);
 extern SeaError tool_swarm_workers(SeaSlice args, SeaArena* arena, SeaSlice* output);
+extern SeaError tool_voice_transcribe(SeaSlice args, SeaArena* arena, SeaSlice* output);
 
 /* ── The Static Registry ──────────────────────────────────── */
 
@@ -167,6 +168,7 @@ static const SeaTool s_registry[] = {
     {74, "swarm_spawn",   "Spawn worker pod. Args: <task> [worker_name] [soul]",    tool_swarm_spawn },
     {75, "swarm_relay",   "Relay message to agent. Args: <target> <message>",       tool_swarm_relay },
     {76, "swarm_workers", "List active worker pods. Args: (none)",                  tool_swarm_workers },
+    {77, "voice_transcribe", "Transcribe audio file. Args: <file_path> [language]", tool_voice_transcribe },
 };
 
 static const u32 s_static_count = sizeof(s_registry) / sizeof(s_registry[0]);

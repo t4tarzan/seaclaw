@@ -173,6 +173,9 @@ class CreateAgentRequest(BaseModel):
     soul: str = Field(default="alex")
     telegram_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
+    discord_bot_token: Optional[str] = None
+    discord_channel_id: Optional[str] = None
+    slack_webhook_url: Optional[str] = None
     enable_webchat: bool = True
     enable_pii: bool = True
     enable_shield: bool = True
@@ -253,6 +256,12 @@ def create_seaclaw_pod(req: CreateAgentRequest) -> str:
         env_vars.append(client.V1EnvVar(name="TELEGRAM_BOT_TOKEN", value=req.telegram_token))
     if req.telegram_chat_id:
         env_vars.append(client.V1EnvVar(name="TELEGRAM_CHAT_ID", value=req.telegram_chat_id))
+    if req.discord_bot_token:
+        env_vars.append(client.V1EnvVar(name="DISCORD_BOT_TOKEN", value=req.discord_bot_token))
+    if req.discord_channel_id:
+        env_vars.append(client.V1EnvVar(name="DISCORD_CHANNEL_ID", value=req.discord_channel_id))
+    if req.slack_webhook_url:
+        env_vars.append(client.V1EnvVar(name="SLACK_WEBHOOK_URL", value=req.slack_webhook_url))
 
     # ConfigMap for this user's config.json
     configmap_name = f"seaclaw-config-{req.username}"
