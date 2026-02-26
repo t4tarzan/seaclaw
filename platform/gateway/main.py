@@ -9,10 +9,11 @@ import os
 import json
 import secrets
 import logging
+import sqlite3
 import httpx
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -51,6 +52,103 @@ def init_k8s():
     return client.CoreV1Api(), client.AppsV1Api()
 
 v1, apps_v1 = init_k8s()
+
+# ── Platform Task DB bootstrap ────────────────────────────────
+
+PLATFORM_TASKS_DB = DATA_DIR / "platform_tasks.db"
+
+_TASKS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS platform_tasks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    phase       TEXT NOT NULL,
+    task_id     TEXT NOT NULL UNIQUE,
+    sprint      INTEGER NOT NULL,
+    title       TEXT NOT NULL,
+    effort      TEXT CHECK(effort IN ('S','M','H')),
+    status      TEXT DEFAULT 'todo' CHECK(status IN ('todo','in_progress','done','blocked')),
+    files       TEXT,
+    notes       TEXT,
+    created_at  DATETIME DEFAULT (datetime('now')),
+    updated_at  DATETIME DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_phase   ON platform_tasks(phase);
+CREATE INDEX IF NOT EXISTS idx_sprint  ON platform_tasks(sprint);
+CREATE INDEX IF NOT EXISTS idx_status  ON platform_tasks(status);
+"""
+
+_SEED_TASKS = [
+    ("P1","P1-01",1,"Dashboard tab: agent card with usage stats, uptime, model","S","platform/gateway/templates/index.html"),
+    ("P1","P1-02",1,"Projects tab: create project, link to git repo, assign to agent","M","platform/gateway/templates/index.html, platform/gateway/main.py"),
+    ("P1","P1-03",1,"POST /api/v1/agents/{user}/project — clone repo into /workspace","M","platform/gateway/main.py"),
+    ("P1","P1-04",1,"GET /api/v1/agents/{user}/workspace — list files in /workspace","S","platform/gateway/main.py"),
+    ("P1","P1-05",1,"Task board: list SeaZero tasks from pod DB (todo/in_progress/done)","M","platform/gateway/templates/index.html, platform/gateway/main.py"),
+    ("P1","P1-06",1,"GET /api/v1/agents/{user}/tasks — proxy to pod /api/tasks","S","platform/gateway/main.py"),
+    ("P1","P1-07",1,"Agent settings panel: change model, update API key","M","platform/gateway/templates/index.html, platform/gateway/main.py"),
+    ("P1","P1-08",1,"PATCH /api/v1/agents/{user}/config — update config.json in running pod","M","platform/gateway/main.py"),
+    ("P1","P1-09",1,"Telegram token field in signup + settings (optional)","S","platform/gateway/templates/index.html, platform/gateway/main.py"),
+    ("P1","P1-10",1,"Swarm toggle in settings panel (on/off)","S","platform/gateway/templates/index.html"),
+    ("P2","P2-01",2,"tool_git_clone — clone a repo into /workspace/{project}","M","src/hands/tool_git.c"),
+    ("P2","P2-02",2,"tool_git_pull — pull latest changes","S","src/hands/tool_git.c"),
+    ("P2","P2-03",2,"tool_git_status — show changed files","S","src/hands/tool_git.c"),
+    ("P2","P2-04",2,"tool_git_diff — show diff of changed files","S","src/hands/tool_git.c"),
+    ("P2","P2-05",2,"tool_git_log — show recent commits","S","src/hands/tool_git.c"),
+    ("P2","P2-06",2,"tool_git_checkout — switch branch","S","src/hands/tool_git.c"),
+    ("P2","P2-07",2,"Register git tools #65-70 in sea_tools.c","S","src/hands/sea_tools.c"),
+    ("P2","P2-08",2,"Rebuild Docker image + redeploy to K3s","S","platform/docker/Dockerfile.seaclaw"),
+    ("P2","P2-09",2,"Test: ask alec to clone a repo and summarize it end-to-end","S","—"),
+    ("P3","P3-01",2,"tool_task_create — create task in SQLite seazero_tasks","S","src/hands/tool_pm.c"),
+    ("P3","P3-02",2,"tool_task_list — list tasks by status/project","S","src/hands/tool_pm.c"),
+    ("P3","P3-03",2,"tool_task_update — update task status, add notes","S","src/hands/tool_pm.c"),
+    ("P3","P3-04",2,"tool_report_generate — LLM summarizes tasks into markdown report","M","src/hands/tool_pm.c"),
+    ("P3","P3-05",2,"tool_milestone — set milestone, track % complete","S","src/hands/tool_pm.c"),
+    ("P3","P3-06",2,"Register PM tools in sea_tools.c","S","src/hands/sea_tools.c"),
+    ("P3","P3-07",2,"Add GET /api/tasks endpoint to sea_api.c","M","src/api/sea_api.c"),
+    ("P3","P3-08",2,"Dashboard Kanban columns (To Do / In Progress / Done) from tasks API","M","platform/gateway/templates/index.html"),
+    ("P4","P4-01",3,"tool_spawn_worker — call gateway to create ephemeral worker pod","M","src/hands/tool_swarm.c"),
+    ("P4","P4-02",3,"Worker pod lifecycle: auto-delete after task complete","M","platform/gateway/main.py"),
+    ("P4","P4-03",3,"POST /api/v1/agents/{user}/workers — create named worker","M","platform/gateway/main.py"),
+    ("P4","P4-04",3,"Inter-pod messaging via gateway relay","M","platform/gateway/main.py, src/api/sea_api.c"),
+    ("P4","P4-05",3,"Coordinator prompt template: decompose — assign — collect","M","platform/souls/coordinator.md"),
+    ("P4","P4-06",3,"Swarm toggle in user config + dashboard UI","S","platform/gateway/main.py, platform/gateway/templates/index.html"),
+    ("P4","P4-07",3,"Test: analyze codebase and generate PR review via swarm","M","—"),
+    ("P5","P5-01",4,"Build Agent Zero Docker image for K3s (arm64 + amd64)","M","platform/docker/Dockerfile.agentzero"),
+    ("P5","P5-02",4,"K8s manifest: shared agent-zero pod + ClusterIP Service","S","platform/k8s/agent-zero.yaml"),
+    ("P5","P5-03",4,"Signup form: Enable Agent Zero toggle + separate LLM key option","S","platform/gateway/templates/index.html"),
+    ("P5","P5-04",4,"Per-user token budget config field (default 100K tokens/day)","S","platform/gateway/main.py"),
+    ("P5","P5-05",4,"Gateway injects SEAZERO_AGENT_URL + SEAZERO_TOKEN into pod env","M","platform/gateway/main.py"),
+    ("P5","P5-06",4,"LLM proxy multi-tenant: per-user token + budget tracking","H","src/seazero/sea_proxy.c"),
+    ("P5","P5-07",4,"Dashboard: AZ status indicator + task queue depth","M","platform/gateway/templates/index.html"),
+    ("P5","P5-08",4,"Test: ask agent to run Python script that downloads and analyzes data","M","—"),
+    ("P6","P6-01",5,"K3s agent join script (for RPi / second VPS)","S","platform/scripts/join-node.sh"),
+    ("P6","P6-02",5,"Node labels: capability-based scheduling (arm64, gpu, high-memory)","S","platform/k8s/node-labels.yaml"),
+    ("P6","P6-03",5,"Longhorn distributed storage OR NFS for cross-node PVCs","H","platform/k8s/storage.yaml"),
+    ("P6","P6-04",5,"HPA for gateway: scale 1→10 replicas at CPU >50%","S","platform/k8s/gateway-hpa.yaml"),
+    ("P6","P6-05",5,"PodDisruptionBudget for gateway (always 1 available)","S","platform/k8s/gateway-pdb.yaml"),
+    ("P6","P6-06",5,"Resource limits on SeaClaw pods (100m CPU, 64Mi RAM)","S","platform/gateway/main.py"),
+    ("P6","P6-07",5,"LimitRange + ResourceQuota per namespace","S","platform/k8s/quotas.yaml"),
+    ("P6","P6-08",5,"Test: join RPi node, create agent, verify it schedules to RPi","M","—"),
+    ("P7","P7-01",6,"channel_discord.c — Discord bot via HTTP Events API","H","src/channels/channel_discord.c"),
+    ("P7","P7-02",6,"channel_slack.c — Slack via Socket Mode","H","src/channels/channel_slack.c"),
+    ("P7","P7-03",6,"Discord/Slack token fields in signup form + settings","M","platform/gateway/templates/index.html"),
+    ("P7","P7-04",6,"Gateway injects channel tokens into pod env vars","M","platform/gateway/main.py"),
+    ("P7","P7-05",6,"Voice support: Whisper transcription via Groq API","M","src/channels/sea_voice.c"),
+]
+
+def _init_tasks_db():
+    """Create and seed platform_tasks.db in DATA_DIR on first boot."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(PLATFORM_TASKS_DB))
+    conn.executescript(_TASKS_SCHEMA)
+    conn.executemany(
+        "INSERT OR IGNORE INTO platform_tasks (phase,task_id,sprint,title,effort,files) VALUES (?,?,?,?,?,?)",
+        _SEED_TASKS
+    )
+    conn.commit()
+    count = conn.execute("SELECT COUNT(*) FROM platform_tasks").fetchone()[0]
+    conn.close()
+    logger.info(f"platform_tasks.db ready: {count} tasks at {PLATFORM_TASKS_DB}")
+
+_init_tasks_db()
 
 # ── App ──────────────────────────────────────────────────────
 
@@ -481,6 +579,205 @@ async def _proxy_chat(username: str, message: str) -> dict:
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=8192)
+
+class UpdateConfigRequest(BaseModel):
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    llm_provider: Optional[str] = None
+    token_budget: Optional[int] = Field(default=None, ge=1000, le=1000000)
+    enable_agent_zero: Optional[bool] = None
+    swarm_mode: Optional[bool] = None
+
+class ProjectRequest(BaseModel):
+    repo_url: str = Field(..., min_length=5)
+    project_name: Optional[str] = None
+    branch: str = Field(default="main")
+
+
+@app.patch("/api/v1/agents/{username}/config")
+async def update_agent_config(username: str, req: UpdateConfigRequest):
+    """Update a running agent's configuration."""
+    instances = _load_instances()
+    if username not in instances:
+        raise HTTPException(404, f"Agent '{username}' not found")
+
+    info = instances[username]
+    configmap_name = f"seaclaw-config-{username}"
+
+    # Load current configmap
+    try:
+        cm = v1.read_namespaced_config_map(name=configmap_name, namespace=NAMESPACE)
+        config_data = json.loads(cm.data["config.json"])
+    except Exception:
+        config_data = {}
+
+    # Apply changes
+    if req.model is not None:
+        config_data["llm_model"] = req.model
+        info["model"] = req.model
+    if req.api_key is not None:
+        config_data["llm_api_key"] = req.api_key
+    if req.llm_provider is not None:
+        config_data["llm_provider"] = req.llm_provider
+        config_data["llm_api_url"] = PROVIDER_URLS.get(req.llm_provider, PROVIDER_URLS["openrouter"])
+        info["llm_provider"] = req.llm_provider
+    if req.token_budget is not None:
+        config_data["seazero_budget"] = req.token_budget
+        info["token_budget"] = req.token_budget
+    if req.enable_agent_zero is not None:
+        config_data["seazero_enabled"] = req.enable_agent_zero
+        info["enable_agent_zero"] = req.enable_agent_zero
+    if req.swarm_mode is not None:
+        config_data["swarm_mode"] = req.swarm_mode
+        info["swarm_mode"] = req.swarm_mode
+
+    # Update configmap
+    try:
+        cm.data["config.json"] = json.dumps(config_data, indent=2)
+        v1.replace_namespaced_config_map(name=configmap_name, namespace=NAMESPACE, body=cm)
+    except Exception as e:
+        raise HTTPException(500, f"ConfigMap update failed: {e}")
+
+    info["updated_at"] = datetime.utcnow().isoformat()
+    instances[username] = info
+    _save_instances(instances)
+
+    return {"status": "updated", "username": username, "changes": req.dict(exclude_none=True)}
+
+
+@app.post("/api/v1/agents/{username}/project")
+async def create_project(username: str, req: ProjectRequest):
+    """Clone a git repo into the agent's /workspace/{project_name}."""
+    instances = _load_instances()
+    if username not in instances:
+        raise HTTPException(404, f"Agent '{username}' not found")
+
+    project_name = req.project_name or req.repo_url.rstrip("/").split("/")[-1].removesuffix(".git")
+
+    # Sanitize project name
+    import re
+    project_name = re.sub(r"[^a-zA-Z0-9_-]", "-", project_name)[:64]
+
+    # Send git clone command to the agent via chat
+    clone_cmd = f"clone the git repository {req.repo_url} branch {req.branch} into /workspace/{project_name}"
+    try:
+        result = await _proxy_chat(username, clone_cmd)
+    except HTTPException as e:
+        raise e
+
+    # Track project in instance registry
+    info = instances[username]
+    projects = info.get("projects", {})
+    projects[project_name] = {
+        "repo_url": req.repo_url,
+        "branch": req.branch,
+        "created_at": datetime.utcnow().isoformat(),
+        "path": f"/workspace/{project_name}",
+    }
+    info["projects"] = projects
+    instances[username] = info
+    _save_instances(instances)
+
+    return {
+        "status": "cloning",
+        "project_name": project_name,
+        "repo_url": req.repo_url,
+        "path": f"/workspace/{project_name}",
+        "agent_response": result,
+    }
+
+
+@app.get("/api/v1/agents/{username}/workspace")
+async def list_workspace(username: str):
+    """List files in the agent's /workspace via the pod's shell tool."""
+    instances = _load_instances()
+    if username not in instances:
+        raise HTTPException(404, f"Agent '{username}' not found")
+
+    try:
+        result = await _proxy_chat(username, "list the contents of /workspace directory, show folder names and file counts")
+        return {"username": username, "workspace": result, "projects": instances[username].get("projects", {})}
+    except HTTPException as e:
+        raise e
+
+
+@app.get("/api/v1/agents/{username}/tasks")
+async def list_agent_tasks(username: str, status: Optional[str] = None):
+    """List tasks from the agent's SQLite DB via its /api/tasks endpoint."""
+    instances = _load_instances()
+    if username not in instances:
+        raise HTTPException(404, f"Agent '{username}' not found")
+
+    svc_url = f"http://seaclaw-{username}-svc.{NAMESPACE}.svc.cluster.local:{API_PORT}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http:
+            url = f"{svc_url}/api/tasks"
+            if status:
+                url += f"?status={status}"
+            resp = await http.get(url)
+            if resp.status_code == 404:
+                return {"tasks": [], "note": "Tasks endpoint not yet available in this SeaClaw build"}
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.ConnectError:
+        return {"tasks": [], "error": f"Agent '{username}' not reachable"}
+    except Exception:
+        return {"tasks": []}
+
+
+# ── Platform Task DB ──────────────────────────────────────────
+
+def _get_platform_tasks(phase: Optional[str] = None, sprint: Optional[int] = None,
+                         status: Optional[str] = None) -> List[dict]:
+    if not PLATFORM_TASKS_DB.exists():
+        return []
+    conn = sqlite3.connect(str(PLATFORM_TASKS_DB))
+    conn.row_factory = sqlite3.Row
+    q = "SELECT * FROM platform_tasks WHERE 1=1"
+    params = []
+    if phase:
+        q += " AND phase = ?"
+        params.append(phase)
+    if sprint is not None:
+        q += " AND sprint = ?"
+        params.append(sprint)
+    if status:
+        q += " AND status = ?"
+        params.append(status)
+    q += " ORDER BY phase, task_id"
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/v1/platform/tasks")
+async def get_platform_tasks(
+    phase: Optional[str] = None,
+    sprint: Optional[int] = None,
+    status: Optional[str] = None
+):
+    """Get tasks from the platform_tasks.db (master plan tracker)."""
+    tasks = _get_platform_tasks(phase=phase, sprint=sprint, status=status)
+    return {"tasks": tasks, "count": len(tasks)}
+
+
+@app.patch("/api/v1/platform/tasks/{task_id}")
+async def update_platform_task(task_id: str, body: dict):
+    """Update a platform task's status or notes."""
+    if not PLATFORM_TASKS_DB.exists():
+        raise HTTPException(503, "Task DB not initialized")
+    allowed = {"status", "notes"}
+    updates = {k: v for k, v in body.items() if k in allowed}
+    if not updates:
+        raise HTTPException(400, "No valid fields to update")
+    conn = sqlite3.connect(str(PLATFORM_TASKS_DB))
+    sets = ", ".join(f"{k} = ?" for k in updates)
+    sets += ", updated_at = datetime('now')"
+    conn.execute(f"UPDATE platform_tasks SET {sets} WHERE task_id = ?",
+                 list(updates.values()) + [task_id])
+    conn.commit()
+    conn.close()
+    return {"status": "updated", "task_id": task_id}
 
 
 @app.post("/api/v1/agents/{username}/chat")
