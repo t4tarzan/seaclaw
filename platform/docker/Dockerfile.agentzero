@@ -1,0 +1,56 @@
+# Agent Zero — SeaClaw Premium Tier
+# Builds Agent Zero (frdel/agent-zero) for K3s deployment.
+# This is the opt-in premium tier: activated per-user via enable_agent_zero flag.
+#
+# Build:
+#   docker build -t seaclaw-agentzero:latest -f platform/docker/Dockerfile.agentzero .
+#
+# The container exposes port 8080 (JSON-RPC API).
+# SeaClaw pods reach it via: http://agent-zero-svc.seaclaw-platform.svc.cluster.local:8080
+
+FROM python:3.11-slim AS base
+
+# System deps: curl for health checks only — no heavy build tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create working directory
+WORKDIR /agent-zero
+
+# Clone Agent Zero source (no deps installed — shim imports optionally)
+ARG AZ_REF=main
+RUN git clone --depth 1 --branch ${AZ_REF} \
+    https://github.com/frdel/agent-zero.git . 2>&1 | tail -3 \
+    || echo "AZ clone failed — shim runs standalone"
+
+# Install only the lightweight deps needed for the shim to function.
+# Heavy ML deps (scipy, torch, etc.) are skipped — AZ import becomes optional.
+# The shim falls back to stub mode gracefully when AZ can't be imported.
+RUN pip install --no-cache-dir \
+    httpx requests python-dotenv openai anthropic colorama \
+    2>&1 | tail -5
+
+# SeaClaw bridge shim
+COPY platform/docker/agentzero_shim.py /agent-zero/seaclaw_shim.py
+
+# Non-root user
+RUN useradd -r -s /bin/false agentzero \
+    && mkdir -p /agent/workdir /agent/memory /agent/shared \
+    && chown -R agentzero:agentzero /agent-zero /agent
+
+VOLUME ["/agent/workdir", "/agent/memory", "/agent/shared"]
+
+ENV AGENT_PORT=8080 \
+    AGENT_ID=agent-0 \
+    LOG_LEVEL=info \
+    PYTHONUNBUFFERED=1
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -sf http://localhost:8080/health || exit 1
+
+USER agentzero
+
+CMD ["python", "/agent-zero/seaclaw_shim.py"]

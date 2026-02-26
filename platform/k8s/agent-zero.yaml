@@ -1,6 +1,8 @@
 ---
-# Shared Agent Zero — Kali Linux container for complex task delegation
-# All SeaClaw instances share this single Agent Zero pod
+# Shared Agent Zero — opt-in premium tier
+# One shared pod per cluster. SeaClaw pods reach it via agent-zero-svc:8080.
+# Activated per-user via enable_agent_zero flag in the signup form.
+# LLM calls are proxied through SeaClaw's sea_proxy (per-user token budget).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,6 +10,7 @@ metadata:
   namespace: seaclaw-platform
   labels:
     app: agent-zero
+    tier: premium
 spec:
   replicas: 1
   selector:
@@ -17,10 +20,11 @@ spec:
     metadata:
       labels:
         app: agent-zero
+        tier: premium
     spec:
       containers:
         - name: agent-zero
-          image: seazero/agent-zero:latest
+          image: seaclaw-agentzero:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -30,6 +34,11 @@ spec:
               value: "agent-0"
             - name: AGENT_PORT
               value: "8080"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            # LLM routed through SeaClaw proxy — agents never see real API keys
             - name: OPENAI_API_BASE
               value: "http://proxy-svc.seaclaw-platform.svc.cluster.local:7432"
             - name: OPENAI_API_KEY
@@ -37,38 +46,51 @@ spec:
                 secretKeyRef:
                   name: seaclaw-secrets
                   key: seazero-bridge-token
+                  optional: true
             - name: SEACLAW_CALLBACK_URL
-              value: "http://proxy-svc.seaclaw-platform.svc.cluster.local:7432"
-            - name: LOG_LEVEL
-              value: "info"
+              value: "http://gateway-svc.seaclaw-platform.svc.cluster.local:8090"
+            # Default model (overridden per-request by proxy)
+            - name: LLM_MODEL
+              value: "moonshotai/kimi-k2"
           resources:
             requests:
               cpu: 250m
               memory: 512Mi
             limits:
-              cpu: "1"
+              cpu: "2"
               memory: 2Gi
           volumeMounts:
+            - name: az-workdir
+              mountPath: /agent/workdir
+            - name: az-memory
+              mountPath: /agent/memory
             - name: shared-workspace
               mountPath: /agent/shared
+          # Agent Zero needs write access to its workdir — no readOnlyRootFilesystem
           securityContext:
-            readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
             capabilities:
               drop: ["ALL"]
           livenessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 15
+            initialDelaySeconds: 20
             periodSeconds: 30
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 10
       volumes:
+        - name: az-workdir
+          emptyDir: {}
+        - name: az-memory
+          emptyDir: {}
         - name: shared-workspace
           persistentVolumeClaim:
             claimName: seaclaw-shared-workspace
@@ -79,6 +101,8 @@ kind: Service
 metadata:
   name: agent-zero-svc
   namespace: seaclaw-platform
+  labels:
+    app: agent-zero
 spec:
   selector:
     app: agent-zero
