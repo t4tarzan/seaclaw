@@ -1,0 +1,98 @@
+---
+# ── HPA for gateway: scale 1→5 replicas at CPU >50% ─────────────────────────
+# Requires metrics-server (pre-installed in K3s >= 1.20).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gateway-hpa
+  namespace: seaclaw-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gateway
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+---
+# ── PodDisruptionBudget for gateway: always keep ≥1 available ────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gateway-pdb
+  namespace: seaclaw-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: gateway
+---
+# ── LimitRange: default resource bounds for all pods in namespace ─────────────
+# Prevents unbounded resource usage from new pods without explicit requests/limits.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: seaclaw-limits
+  namespace: seaclaw-platform
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 200m
+        memory: 128Mi
+      defaultRequest:
+        cpu: 50m
+        memory: 32Mi
+      max:
+        cpu: "2"
+        memory: 2Gi
+      min:
+        cpu: 10m
+        memory: 8Mi
+    - type: Pod
+      max:
+        cpu: "4"
+        memory: 4Gi
+---
+# ── ResourceQuota: hard cap for the entire namespace ─────────────────────────
+# Prevents a runaway swarm from consuming all node resources.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: seaclaw-quota
+  namespace: seaclaw-platform
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 4Gi
+    limits.cpu: "16"
+    limits.memory: 16Gi
+    pods: "30"
+    persistentvolumeclaims: "20"
+    services: "20"
+    configmaps: "60"

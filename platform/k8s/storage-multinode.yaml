@@ -1,0 +1,80 @@
+---
+# ── Multi-node Storage Strategy ───────────────────────────────────────────────
+# For a single-node K3s cluster, local-path (RWO) works fine.
+# When adding worker nodes, shared PVCs (RWX) are needed for:
+#   - seaclaw-shared-workspace  (agents collaborate on same files)
+#   - seaclaw-user-data         (users can run on any node)
+#
+# Two options:
+#   A) NFS (lightweight, requires nfs-kernel-server on the control-plane)
+#   B) Longhorn (distributed, self-healing — install with helm)
+#
+# This file implements Option A (NFS) since we run on a single VPS.
+# Enable Option B (Longhorn) by applying platform/k8s/longhorn.yaml instead.
+
+---
+# NFS StorageClass — dynamic provisioner for ReadWriteMany PVCs
+# Pre-req: install nfs-subdir-external-provisioner via helm (see setup below)
+#
+# Setup (run once on control-plane):
+#   apt-get install -y nfs-kernel-server
+#   mkdir -p /srv/nfs/seaclaw && chmod 777 /srv/nfs/seaclaw
+#   echo '/srv/nfs/seaclaw *(rw,sync,no_subtree_check,no_root_squash)' >> /etc/exports
+#   exportfs -ra
+#   helm repo add nfs-subdir https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
+#   helm install nfs-provisioner nfs-subdir/nfs-subdir-external-provisioner \
+#     --set nfs.server=<NODE-IP> \
+#     --set nfs.path=/srv/nfs/seaclaw \
+#     --set storageClass.name=seaclaw-nfs \
+#     --set storageClass.reclaimPolicy=Retain \
+#     -n seaclaw-platform
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: seaclaw-nfs
+  annotations:
+    description: "NFS-backed RWX storage for multi-node SeaClaw clusters"
+provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+parameters:
+  archiveOnDelete: "false"
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+---
+# ── RWX PVCs for multi-node operation ────────────────────────────────────────
+# These replace the local-path RWO PVCs in storage.yaml when running multi-node.
+# Apply after installing the NFS provisioner:
+#   kubectl apply -f storage-multinode.yaml
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seaclaw-shared-workspace-rwx
+  namespace: seaclaw-platform
+  annotations:
+    description: "Shared git workspace — readable/writable by all agent pods on any node"
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: seaclaw-nfs
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seaclaw-user-data-rwx
+  namespace: seaclaw-platform
+  annotations:
+    description: "Per-user data PVC — RWX so users can migrate between nodes"
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: seaclaw-nfs
+  resources:
+    requests:
+      storage: 20Gi
+---
+# ── NFS Setup Script reference ────────────────────────────────────────────────
+# See: platform/scripts/setup-nfs.sh for automated NFS provisioner install.

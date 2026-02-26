@@ -1,0 +1,54 @@
+---
+# ── Node capability labels ────────────────────────────────────────────────────
+# Apply with: kubectl apply -f nodes.yaml
+# Or label a specific node: kubectl label node <name> seaclaw/role=worker
+#
+# These labels are referenced by pod nodeSelectors / node affinity rules
+# so the scheduler can place workloads on appropriate hardware.
+#
+# To label the current control-plane node as a worker (single-node setup):
+#   kubectl label node ubuntu-8gb-nbg1-1 seaclaw/role=worker seaclaw/tier=standard
+#
+# To label an ARM64 node (e.g. Raspberry Pi 5):
+#   kubectl label node <rpi-name> seaclaw/role=worker seaclaw/arch=arm64 seaclaw/tier=edge
+#
+# NOTE: This file contains an example NodeAffinity-aware deployment template.
+# The actual label patching is done in setup-node.sh for joined worker nodes.
+
+---
+# ── Preferred node affinity for SeaClaw instance pods ────────────────────────
+# Prefer worker nodes; tolerate control-plane for single-node setups.
+# This is a ConfigMap documenting the recommended pod affinity spec.
+# Paste the affinity block into any Deployment/Pod spec as needed.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: seaclaw-node-affinity-template
+  namespace: seaclaw-platform
+  annotations:
+    description: "Reference affinity rules — copy into pod specs as needed"
+data:
+  affinity.yaml: |
+    affinity:
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 80
+            preference:
+              matchExpressions:
+                - key: seaclaw/role
+                  operator: In
+                  values: [worker]
+          - weight: 20
+            preference:
+              matchExpressions:
+                - key: seaclaw/tier
+                  operator: In
+                  values: [standard, edge]
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: seaclaw-instance
+              topologyKey: kubernetes.io/hostname
