@@ -1,8 +1,18 @@
 # SeaClaw Instance — Multi-stage build
-# Stage 1: Compile C binary
-# Stage 2: Minimal runtime image
+#
+# Two modes:
+#   1. Source build (default — requires full repo root as build context):
+#      docker build -f platform/docker/Dockerfile.seaclaw -t seaclaw-instance:latest .
+#
+#   2. Pre-built binary (standalone — platform/ folder only):
+#      docker build -f Dockerfile.seaclaw \
+#        --build-arg PREBUILT_BINARY=./sea_claw \
+#        -t seaclaw-instance:latest .
+#      (place the linux/amd64 sea_claw binary next to this Dockerfile)
 
-# ── Build Stage ──────────────────────────────────────────────
+ARG PREBUILT_BINARY=""
+
+# ── Build Stage (skipped when PREBUILT_BINARY is set) ────────
 FROM ubuntu:24.04 AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -14,10 +24,12 @@ WORKDIR /build
 COPY . .
 
 # Release build — stripped, optimized, no sanitizers
-RUN make release ARCH=x86 2>&1 | tail -5
+RUN if [ ! -f dist/sea_claw ]; then make release ARCH=x86 2>&1 | tail -5; fi
 
 # ── Runtime Stage ────────────────────────────────────────────
 FROM ubuntu:24.04 AS runtime
+
+ARG PREBUILT_BINARY=""
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4t64 libsqlite3-0 libreadline8t64 \
@@ -27,7 +39,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && mkdir -p /data /workspace \
     && chown seaclaw:seaclaw /data /workspace
 
-COPY --from=builder /build/dist/sea_claw /usr/local/bin/sea_claw
+# Copy binary — from builder stage (source build) or pre-built file
+COPY --from=builder /build/dist/sea_claw /tmp/sea_claw_built
+COPY ${PREBUILT_BINARY:-/tmp/sea_claw_built} /usr/local/bin/sea_claw
 RUN chmod +x /usr/local/bin/sea_claw
 
 # Default instance directory
