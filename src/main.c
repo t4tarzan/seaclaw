@@ -1113,7 +1113,8 @@ static int hc_run_tests(FILE *fp) {
             if (strstr(line, "passed")) pass++;
             if (strstr(line, "FAILED") || strstr(line, "failed")) fail++;
         }
-        pclose(p);
+        int rc = pclose(p);
+        if (rc != 0 && fail == 0) fail = 1;
     } else {
         fail = 1;
     }
@@ -1216,6 +1217,13 @@ int main(int argc, char** argv) {
                 return 1;
             }
 
+            /* Load .env and config early so env vars and db_path are correct in all sections */
+            load_dotenv(".env");
+            SeaArena ha;
+            sea_arena_create(&ha, 8192);
+            SeaConfig hcfg = {0};
+            sea_config_load(&hcfg, s_config_path, &ha);
+
             /* Timestamp */
             time_t now = time(NULL);
             char ts[32];
@@ -1253,27 +1261,20 @@ int main(int argc, char** argv) {
             int test_fails = hc_run_tests(fp);
             if (test_fails > 0) critical_failures++;
 
-            /* 4. Config */
+            /* 4. Config — use hcfg loaded above */
             hc_section(fp, "Configuration");
             {
                 struct stat cfg_st;
                 int cfg_exists = (stat(s_config_path, &cfg_st) == 0);
                 fprintf(fp, "- Config path: `%s`\n", s_config_path);
                 fprintf(fp, "- Config file: %s\n", cfg_exists ? "PASS" : "WARN (not found)");
-                if (cfg_exists) {
-                    SeaArena ha;
-                    sea_arena_create(&ha, 8192);
-                    SeaConfig hcfg;
-                    sea_config_load(&hcfg, s_config_path, &ha);
-                    fprintf(fp, "- LLM provider: %s\n",
-                        (hcfg.llm_provider && hcfg.llm_provider[0]) ? hcfg.llm_provider : "WARN (not set)");
-                    fprintf(fp, "- API key set: %s\n",
-                        (hcfg.llm_api_key && hcfg.llm_api_key[0]) ? "PASS" : "WARN (not set)");
-                    sea_arena_destroy(&ha);
-                }
+                fprintf(fp, "- LLM provider: %s\n",
+                    (hcfg.llm_provider && hcfg.llm_provider[0]) ? hcfg.llm_provider : "WARN (not set)");
+                fprintf(fp, "- API key set: %s\n",
+                    (hcfg.llm_api_key && hcfg.llm_api_key[0]) ? "PASS" : "WARN (not set)");
             }
 
-            /* 5. Environment Variables */
+            /* 5. Environment Variables — loaded via load_dotenv() above */
             hc_section(fp, "Environment Variables");
             {
                 const char *env_keys[] = {
@@ -1287,16 +1288,18 @@ int main(int argc, char** argv) {
                 }
             }
 
-            /* 6. Database */
+            /* 6. Database — use hcfg.db_path so config.json db_path is honoured */
             hc_section(fp, "Database");
             {
-                const char *dbp = s_config.db_path ? s_config.db_path : s_db_path;
+                const char *dbp = hcfg.db_path ? hcfg.db_path : s_db_path;
                 SeaDb *hdb = NULL;
                 int db_ok = (sea_db_open(&hdb, dbp) == SEA_OK);
-                fprintf(fp, "- SQLite DB: %s\n", db_ok ? "PASS" : "FAIL");
+                fprintf(fp, "- SQLite DB (`%s`): %s\n", dbp, db_ok ? "PASS" : "FAIL");
                 if (db_ok) sea_db_close(hdb);
                 if (!db_ok) critical_failures++;
             }
+
+            sea_arena_destroy(&ha);
 
             /* 7. Subsystem Summary */
             hc_section(fp, "Subsystem Summary");
