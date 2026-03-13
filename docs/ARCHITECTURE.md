@@ -117,19 +117,21 @@ seaclaw/
 │   │
 │   └── main.c               # Entry point, event loop, command dispatch
 │
-├── tests/                    # Test suites (12 files, 116 tests)
+├── tests/                    # Test suites (14 files, 116 tests; 13 suites in make test)
 │   ├── test_arena.c          # 9 tests
 │   ├── test_json.c           # 17 tests
 │   ├── test_shield.c         # 19 tests
 │   ├── test_db.c             # 10 tests
 │   ├── test_config.c         # 6 tests
-│   ├── test_bus.c            # 12 tests
-│   ├── test_channel.c        # 8 tests
-│   ├── test_session.c        # 10 tests
-│   ├── test_memory.c         # 7 tests
-│   ├── test_cron.c           # 9 tests
-│   ├── test_pii.c            # 6 tests
-│   └── test_recall.c         # 3 tests
+│   ├── test_bus.c            # 10 tests
+│   ├── test_session.c        # 11 tests
+│   ├── test_memory.c         # 8 tests
+│   ├── test_cron.c           # 14 tests
+│   ├── test_skill.c          # 12 tests
+│   ├── test_pii.c            # 7 tests
+│   ├── test_recall.c         # 7 tests
+│   ├── test_seazero.c        # 18 tests
+│   └── test_bench.c          # benchmark runner (not in make test)
 │
 ├── config/
 │   └── config.example.json   # Example configuration
@@ -982,7 +984,7 @@ sea_tool_exec("hash_compute", args, arena, &output)
 ```bash
 make all        # Build sea_claw binary (debug, with ASan)
 make release    # Build optimized (-O3, stripped)
-make test       # Run all 12 test suites (116 tests)
+make test       # Run all 13 test suites (116 tests)
 make clean      # Remove all .o files and binaries
 ```
 
