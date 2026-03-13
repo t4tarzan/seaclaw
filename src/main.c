@@ -1511,6 +1511,7 @@ int main(int argc, char** argv) {
             printf("  --chat <id>         Restrict to chat ID\n");
             printf("  --db <path>         Database file (default: seaclaw.db)\n");
             printf("  --doctor            Diagnose config, providers, channels\n");
+            printf("  --health-report [path]  Full health check, writes Markdown report\n");
             printf("  --onboard           Interactive first-run setup wizard\n");
             printf("  -h, --help          Show this help\n");
             return 0;
