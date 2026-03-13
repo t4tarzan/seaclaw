@@ -33,7 +33,8 @@ Key numbers at a glance:
 | Source lines | 13,400+ |
 | Source files | 95 |
 | Tools | 57 (static, compiled-in) |
-| Tests | 116 across 10 suites |
+| Tests | 116 across 13 suites |
+| JSON parse speed | 3 μs/parse |
 | External dependencies | 2: libcurl, libsqlite3 |
 | Binary size | ~203KB (release) |
 | Startup time | < 1ms |
@@ -107,7 +108,7 @@ sudo pacman -S gcc make curl sqlite
 git clone https://github.com/t4tarzan/seaclaw.git
 cd seaclaw
 make release          # Optimized binary (~203KB stripped)
-make test             # 116 tests, 10 suites
+make test             # 116 tests, 13 suites
 sudo make install     # Installs to /usr/local/bin
 ```
 
@@ -508,7 +509,7 @@ After rebuilding, the tool is available via `/exec example <args>` and the LLM a
 make test
 ```
 
-Expected output (116 tests, 10 suites, all passing):
+Expected output (116 tests, 13 suites, all passing):
 
 ```
 Sea-Claw Arena Tests:     9 passed
@@ -522,7 +523,7 @@ Sea-Claw Memory Tests:    8 passed
 Sea-Claw Cron Tests:     14 passed
 Sea-Claw Skill Tests:    12 passed
 ─────────────────────────────────────
-Total: 116 passed, 0 failed (10 suites)
+Total: 116 passed, 0 failed (13 suites)
 ```
 
 ### What is the difference between debug and release builds?
