@@ -521,9 +521,9 @@ Sea-Claw Session Tests:  11 passed
 Sea-Claw Memory Tests:    8 passed
 Sea-Claw Cron Tests:     14 passed
 Sea-Claw Skill Tests:    12 passed
-Sea-Claw PII Tests:       X passed
-Sea-Claw Recall Tests:    X passed
-Sea-Claw SeaZero Tests:   X passed
+Sea-Claw PII Tests:       7 passed
+Sea-Claw Recall Tests:    7 passed
+Sea-Claw SeaZero Tests:  18 passed
 ─────────────────────────────────────
 Total: 116 passed, 0 failed (13 suites)
 ```
