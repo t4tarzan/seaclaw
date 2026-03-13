@@ -192,7 +192,7 @@ In TUI mode, type commands or natural language:
 
 ```
 🦀 > /help                          # Full command reference
-🦀 > /tools                         # List all 56 tools
+🦀 > /tools                         # List all 57 tools
 🦀 > /exec echo Hello World         # Run a tool directly
 🦀 > /status                        # System status
 🦀 > What files are in /tmp?        # Natural language → AI + tools
@@ -357,7 +357,7 @@ seaclaw/
 │   ├── usage/             # Token usage tracking
 │   ├── a2a/               # Agent-to-Agent delegation protocol
 │   ├── telegram/          # Telegram bot
-│   ├── hands/             # Tool registry + 56 implementations
+│   ├── hands/             # Tool registry + 57 implementations
 │   └── main.c             # Event loop + config + agent wiring
 ├── tests/                 # 116 tests across 10 suites
 ├── config/                # Example config files

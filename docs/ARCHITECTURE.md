@@ -2,8 +2,8 @@
 
 > *"We stop building software that breaks. We start building logic that survives."*
 
-**Version:** 1.0.0  
-**Stats:** 9,159 lines of C11 | 74 source files | 50 tools | 61 tests | 2 dependencies  
+**Version:** 2.0.0
+**Stats:** 13,400+ lines of C11 | 95 source files | 57 tools | 116 tests | 2 dependencies
 **Build:** `make all` → single binary `sea_claw` (~82KB stripped)
 
 ---
@@ -39,7 +39,7 @@ Sea-Claw is a sovereign AI agent platform — a single C11 binary that:
 │                  Sea-Claw Binary                      │
 ├──────────┬──────────┬───────────┬────────┬────────────┤
 │ Substrate│  Senses  │  Shield   │ Brain  │   Hands    │
-│(Arena,DB)│(JSON,HTTP)│(Grammar) │(Agent) │ (50 Tools) │
+│(Arena,DB)│(JSON,HTTP)│(Grammar) │(Agent) │ (57 Tools) │
 ├──────────┴──────────┴───────────┴────────┴────────────┤
 │                   Telegram / TUI                      │
 └───────────────────────────────────────────────────────┘
@@ -53,7 +53,7 @@ Sea-Claw is a sovereign AI agent platform — a single C11 binary that:
 | **Senses** | `src/senses/` | Zero-copy JSON parser, HTTP client (libcurl) |
 | **Shield** | `src/shield/` | Byte-level grammar validation, injection detection |
 | **Brain** | `src/brain/` | LLM agent loop with multi-provider fallback + tool calling |
-| **Hands** | `src/hands/` | 50 static tools: file, shell, web, text, data, network, security |
+| **Hands** | `src/hands/` | 57 static tools: file, shell, web, text, data, network, security |
 
 ---
 
@@ -61,7 +61,7 @@ Sea-Claw is a sovereign AI agent platform — a single C11 binary that:
 
 ```
 seaclaw/
-├── include/seaclaw/          # Public headers (12 files)
+├── include/seaclaw/          # Public headers (18+ files)
 │   ├── sea_types.h           # Fixed-width types, error codes, SeaSlice
 │   ├── sea_arena.h           # Arena allocator API
 │   ├── sea_log.h             # Structured logging
@@ -73,7 +73,16 @@ seaclaw/
 │   ├── sea_tools.h           # Tool registry API
 │   ├── sea_agent.h           # LLM agent API
 │   ├── sea_telegram.h        # Telegram bot API
-│   └── sea_a2a.h             # Agent-to-Agent protocol
+│   ├── sea_a2a.h             # Agent-to-Agent protocol
+│   ├── sea_bus.h             # Thread-safe pub/sub message bus
+│   ├── sea_channel.h         # Abstract channel interface
+│   ├── sea_session.h         # Per-chat session lifecycle
+│   ├── sea_memory.h          # Long-term markdown-based memory
+│   ├── sea_cron.h            # Cron scheduler for background tasks
+│   ├── sea_skill.h           # Markdown-based skills/plugins
+│   ├── sea_usage.h           # Token usage tracking
+│   ├── sea_pii.h             # PII detection and redaction
+│   └── sea_recall.h          # SQLite-backed memory retrieval
 │
 ├── src/
 │   ├── core/                 # Substrate layer
@@ -93,8 +102,8 @@ seaclaw/
 │   │   └── sea_agent.c       # LLM agent loop + tool dispatch
 │   │
 │   ├── hands/                # Tool layer
-│   │   ├── sea_tools.c       # Static registry (50 entries)
-│   │   └── impl/             # Tool implementations (50 files)
+│   │   ├── sea_tools.c       # Static registry (57 entries)
+│   │   └── impl/             # Tool implementations (57 files)
 │   │       ├── tool_echo.c
 │   │       ├── tool_system_status.c
 │   │       ├── ... (48 more)
@@ -108,12 +117,19 @@ seaclaw/
 │   │
 │   └── main.c               # Entry point, event loop, command dispatch
 │
-├── tests/                    # Test suites (5 files, 61 tests)
+├── tests/                    # Test suites (12 files, 116 tests)
 │   ├── test_arena.c          # 9 tests
 │   ├── test_json.c           # 17 tests
 │   ├── test_shield.c         # 19 tests
 │   ├── test_db.c             # 10 tests
-│   └── test_config.c         # 6 tests
+│   ├── test_config.c         # 6 tests
+│   ├── test_bus.c            # 12 tests
+│   ├── test_channel.c        # 8 tests
+│   ├── test_session.c        # 10 tests
+│   ├── test_memory.c         # 7 tests
+│   ├── test_cron.c           # 9 tests
+│   ├── test_pii.c            # 6 tests
+│   └── test_recall.c         # 3 tests
 │
 ├── config/
 │   └── config.example.json   # Example configuration
@@ -156,7 +172,18 @@ Level 5 (Interface):
   sea_telegram.h       ← sea_types.h, sea_arena.h
   sea_a2a.h            ← sea_types.h, sea_arena.h
 
-Level 6 (Application):
+Level 6 (Application - v2.0.0):
+  sea_bus.h            ← sea_types.h, sea_arena.h
+  sea_channel.h        ← sea_types.h, sea_arena.h, sea_bus.h
+  sea_session.h        ← sea_types.h, sea_arena.h, sea_db.h, sea_agent.h
+  sea_memory.h         ← sea_types.h, sea_arena.h
+  sea_cron.h           ← sea_types.h, sea_arena.h, sea_db.h, sea_bus.h
+  sea_skill.h          ← sea_types.h, sea_arena.h
+  sea_usage.h          ← sea_types.h, sea_db.h
+  sea_pii.h            ← sea_types.h, sea_arena.h
+  sea_recall.h         ← sea_types.h, sea_arena.h
+
+Level 7 (Entry Point):
   main.c               ← ALL headers
 ```
 
@@ -176,9 +203,18 @@ The Makefile compiles in this order (each group depends on the previous):
 9. src/brain/sea_agent.c       → sea_agent.o
 10. src/a2a/sea_a2a.c          → sea_a2a.o
 11. src/hands/sea_tools.c      → sea_tools.o
-12. src/hands/impl/tool_*.c    → tool_*.o  (50 files)
-13. src/main.c                 → main.o
-14. LINK ALL → sea_claw        (links: -lm -lcurl -lsqlite3)
+12. src/hands/impl/tool_*.c    → tool_*.o  (57 files)
+13. src/bus/sea_bus.c          → sea_bus.o
+14. src/channel/sea_channel.c  → sea_channel.o
+15. src/session/sea_session.c  → sea_session.o
+16. src/memory/sea_memory.c    → sea_memory.o
+17. src/cron/sea_cron.c        → sea_cron.o
+18. src/skill/sea_skill.c      → sea_skill.o
+19. src/usage/sea_usage.c      → sea_usage.o
+20. src/pii/sea_pii.c          → sea_pii.o
+21. src/recall/sea_recall.c    → sea_recall.o
+22. src/main.c                 → main.o
+23. LINK ALL → sea_claw        (links: -lm -lcurl -lsqlite3 -lpthread)
 ```
 
 ### 3.3 Runtime Initialization Order
@@ -663,7 +699,178 @@ i32          sea_a2a_discover(const char* url, SeaA2aPeer* out, i32 max, SeaAren
 
 ---
 
-### 4.13 `main.c` — The Nervous System
+### 4.13 `sea_bus.h/.c` — The Message Bus
+
+**Purpose:** Thread-safe pub/sub message bus that decouples channels from the agent loop. All message data is copied into the bus arena.
+
+**Header:** `include/seaclaw/sea_bus.h`
+
+**Key Responsibilities:**
+- Inbound queue (channels → agent): channels publish user messages; agent consumes them
+- Outbound queue (agent → channels): agent publishes responses; channels consume and deliver
+- Arena-backed message storage — strings are copied in, owned until the arena is reset
+- Thread-safe via `pthread_mutex_t` / `pthread_cond_t` on both queues independently
+- Queue depth counters (`sea_bus_inbound_count`, `sea_bus_outbound_count`) for monitoring
+
+**Dependencies:** `sea_types.h`, `sea_arena.h`, `<pthread.h>`
+
+**Dependents:** `sea_channel.h`, `sea_session.h`, `sea_cron.h`, `main.c`
+
+---
+
+### 4.14 `sea_channel.h/.c` — Channel Abstraction
+
+**Purpose:** Abstract interface every messaging channel (Telegram, Discord, etc.) implements via a VTable. The channel manager starts/stops channels and routes outbound bus messages to the correct channel.
+
+**Header:** `include/seaclaw/sea_channel.h`
+
+**Key Responsibilities:**
+- VTable-based polymorphism: `init`, `start`, `poll`, `send`, `stop`, `destroy` per channel
+- `SeaChannelManager` registers, starts, and stops up to 16 channels
+- `sea_channel_dispatch_outbound` reads outbound bus messages and calls `send()` on the correct channel
+- Tracks per-channel state: `STOPPED`, `STARTING`, `RUNNING`, `ERROR`
+- `sea_channel_base_init` helper fills common fields for channel implementors
+
+**Dependencies:** `sea_types.h`, `sea_arena.h`, `sea_bus.h`
+
+**Dependents:** `main.c`
+
+---
+
+### 4.15 `sea_session.h/.c` — Session Management
+
+**Purpose:** Per-channel, per-chat session isolation with LLM-driven summarization. Sessions are keyed by `"channel:chat_id"` and persisted in SQLite so they survive restarts.
+
+**Header:** `include/seaclaw/sea_session.h`
+
+**Key Responsibilities:**
+- Maintains up to 64 concurrent sessions, each with up to 50 messages of history
+- Auto-summarizes history via LLM when the `max_history` threshold is reached
+- `sea_session_get_history` returns a `SeaChatMsg` array ready for `sea_agent_chat`
+- Full SQLite persistence: `sea_session_save_all` / `sea_session_load_all`
+- `sea_session_build_key` constructs the canonical `"channel:chat_id"` key
+
+**Dependencies:** `sea_types.h`, `sea_arena.h`, `sea_db.h`, `sea_agent.h`
+
+**Dependents:** `main.c`
+
+---
+
+### 4.16 `sea_memory.h/.c` — Long-Term Memory
+
+**Purpose:** Persistent memory stored as markdown files in `~/.seaclaw/`. Includes long-term facts (`MEMORY.md`), bootstrap personality files, and daily notes (`notes/YYYYMM/YYYYMMDD.md`).
+
+**Header:** `include/seaclaw/sea_memory.h`
+
+**Key Responsibilities:**
+- Read/write/append `MEMORY.md` (long-term facts and preferences)
+- Read/write bootstrap files: `IDENTITY.md`, `USER.md`, `SOUL.md`, `AGENTS.md`
+- Daily notes in `notes/YYYYMM/YYYYMMDD.md`; `sea_memory_read_recent_notes` loads the last N days
+- `sea_memory_build_context` assembles the full memory context string for system-prompt injection
+- `sea_memory_create_defaults` bootstraps the workspace with placeholder files on first run
+
+**Dependencies:** `sea_types.h`, `sea_arena.h`
+
+**Dependents:** `main.c`
+
+---
+
+### 4.17 `sea_cron.h/.c` — Cron Scheduler
+
+**Purpose:** SQLite-backed background job scheduler supporting standard cron expressions, interval scheduling (`@every`), and one-shot delays (`@once`). Jobs survive restarts.
+
+**Header:** `include/seaclaw/sea_cron.h`
+
+**Key Responsibilities:**
+- Three job types: `SEA_CRON_SHELL` (shell command), `SEA_CRON_TOOL` (registered tool), `SEA_CRON_BUS_MSG` (bus message)
+- Three schedule types: cron expression, `@every Ns/Nm/Nh`, `@once Ns`
+- `sea_cron_tick` is called once per second; fires all due jobs and persists state
+- `sea_cron_pause` / `sea_cron_resume` for runtime control without deletion
+- Up to 64 concurrent jobs; full CRUD with DB persistence
+
+**Dependencies:** `sea_types.h`, `sea_arena.h`, `sea_db.h`, `sea_bus.h`
+
+**Dependents:** `main.c`
+
+---
+
+### 4.18 `sea_skill.h/.c` — Skills & Plugins
+
+**Purpose:** Markdown-based skill plugins that extend the agent's capabilities at runtime. Skills are `.md` files with YAML frontmatter (`name`, `description`, `trigger`) and a prompt body.
+
+**Header:** `include/seaclaw/sea_skill.h`
+
+**Key Responsibilities:**
+- `sea_skill_load_all` scans a directory and parses all `.md` skill files
+- `sea_skill_parse` extracts YAML frontmatter and body into a `SeaSkill` struct
+- Lookup by `name` or by `trigger` command (e.g. `/summarize`)
+- `sea_skill_enable` / disable individual skills at runtime
+- `sea_skill_build_prompt` combines the skill body with user input into a ready-to-send prompt
+
+**Dependencies:** `sea_types.h`, `sea_arena.h`
+
+**Dependents:** `main.c`
+
+---
+
+### 4.19 `sea_usage.h/.c` — Usage Tracking
+
+**Purpose:** Tracks token consumption per provider, per day. Persisted to SQLite for billing and audit. Lightweight counters with no per-request allocation.
+
+**Header:** `include/seaclaw/sea_usage.h`
+
+**Key Responsibilities:**
+- `sea_usage_record` updates per-provider and per-day counters in one call
+- Rolling 30-day window of `SeaUsageDay` structs
+- Aggregates: `total_tokens_in`, `total_tokens_out`, `total_requests`, `total_errors`
+- `sea_usage_summary` formats a human-readable report into a caller-supplied buffer
+- SQLite persistence: `sea_usage_save` / `sea_usage_load`
+
+**Dependencies:** `sea_types.h`, `sea_db.h`
+
+**Dependents:** `main.c`
+
+---
+
+### 4.20 `sea_pii.h` — PII Firewall
+
+**Purpose:** Detects and redacts Personally Identifiable Information (PII) from text before it leaves the system. Header-only — no separate `.c` file.
+
+**Header:** `include/seaclaw/sea_pii.h`
+
+**Key Responsibilities:**
+- Detects: email addresses, phone numbers (US/international), SSNs, credit card numbers (Luhn-validated), IPv4 addresses
+- Category flags: `SEA_PII_EMAIL`, `SEA_PII_PHONE`, `SEA_PII_SSN`, `SEA_PII_CREDIT_CARD`, `SEA_PII_IP_ADDR`; combine with `|` or use `SEA_PII_ALL`
+- `sea_pii_scan` returns a `SeaPiiResult` with match offsets and categories (up to 32 matches)
+- `sea_pii_redact` replaces matches with `[REDACTED]`; result allocated in caller's arena
+- `sea_pii_contains` is a quick boolean check for hot-path filtering
+
+**Dependencies:** `sea_types.h`, `sea_arena.h`
+
+**Dependents:** `main.c`
+
+---
+
+### 4.21 `sea_recall.h/.c` — Recall Engine
+
+**Purpose:** SQLite-backed memory index (The Vault). Stores atomic facts scored by keyword overlap × importance × recency. Only the top-N most relevant facts are loaded into context, keeping token usage bounded.
+
+**Header:** `include/seaclaw/sea_recall.h`
+
+**Key Responsibilities:**
+- Facts stored with `category`, `content`, `keywords`, `importance` (1–10), and timestamps
+- Query pipeline: tokenize input → keyword match → score (overlap × importance × recency_decay) → top-N
+- `sea_recall_build_context` assembles a context string within a configurable token budget
+- Forget operations: by fact `id` or entire `category`
+- Categories: `user`, `preference`, `fact`, `rule`, `context`, `identity`
+
+**Dependencies:** `sea_types.h`, `sea_arena.h`, `sea_db.h` (opaque `SeaDb*`)
+
+**Dependents:** `main.c`
+
+---
+
+### 4.22 `main.c` — The Nervous System
 
 **Purpose:** Entry point. Parses CLI args, initializes all subsystems, runs either TUI or Telegram mode.
 
@@ -680,7 +887,7 @@ i32          sea_a2a_discover(const char* url, SeaA2aPeer* out, i32 max, SeaAren
 ```
 /help           — Full command reference
 /status         — System status & memory
-/tools          — List all 50 tools
+/tools          — List all 57 tools
 /task list      — List tasks
 /task create    — Create a task
 /task done <id> — Complete a task
@@ -709,7 +916,7 @@ main()
   ├── sea_config_load(&config, "config.json", &cfg_arena)
   ├── sea_arena_create(&session_arena, 16MB)
   ├── sea_arena_create(&request_arena, 1MB)
-  ├── sea_tools_init()                    // logs "50 tools"
+  ├── sea_tools_init()                    // logs "57 tools"
   ├── sea_db_open(&db, "seaclaw.db")
   │     └── CREATE TABLE IF NOT EXISTS (trajectory, config, tasks, chat_history)
   ├── sea_agent_init(&agent_cfg)          // logs provider + model
@@ -729,7 +936,7 @@ sea_telegram_poll()
         │     ├── sea_shield_detect_injection(text)     // Security gate
         │     ├── If /command:
         │     │     ├── /status → sea_tool_exec("system_status", ...)
-        │     │     ├── /tools  → iterate sea_tool_by_id(1..50)
+        │     │     ├── /tools  → iterate sea_tool_by_id(1..57)
         │     │     ├── /exec   → sea_tool_exec(name, args, ...)
         │     │     ├── /task   → sea_tool_exec("task_manage", ...)
         │     │     ├── /file   → sea_tool_exec("file_read"|"file_write", ...)
@@ -775,7 +982,7 @@ sea_tool_exec("hash_compute", args, arena, &output)
 ```bash
 make all        # Build sea_claw binary (debug, with ASan)
 make release    # Build optimized (-O3, stripped)
-make test       # Run all 5 test suites (61 tests)
+make test       # Run all 12 test suites (116 tests)
 make clean      # Remove all .o files and binaries
 ```
 
@@ -908,4 +1115,4 @@ That's it. Two runtime libraries. No npm. No pip. No cargo. No go modules.
 
 ---
 
-*Generated from Sea-Claw v1.0.0 source code — 74 files, 9,159 lines of C11.*
+*Generated from Sea-Claw v2.0.0 source code — 95 files, 13,400+ lines of C11.*
