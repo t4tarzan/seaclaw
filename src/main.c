@@ -38,6 +38,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <time.h>
 
 /* ── Constants ────────────────────────────────────────────── */
 
@@ -1087,6 +1088,46 @@ static int run_gateway(const char* tg_token, i64 tg_chat_id) {
     return 0;
 }
 
+/* ── Health Report Helpers ────────────────────────────────── */
+
+static void hc_section(FILE *fp, const char *title) {
+    fprintf(fp, "\n## %s\n\n", title);
+}
+
+static int hc_check_tool(FILE *fp, const char *cmd, const char *label) {
+    char buf[128];
+    snprintf(buf, sizeof(buf), "which %s > /dev/null 2>&1", cmd);
+    int ok = (system(buf) == 0);
+    fprintf(fp, "- %s: %s\n", label, ok ? "PASS" : "FAIL");
+    return ok;
+}
+
+static int hc_run_tests(FILE *fp) {
+    fprintf(fp, "```\n");
+    FILE *p = popen("make test-docker 2>&1", "r");
+    int pass = 0, fail = 0;
+    char line[512];
+    if (p) {
+        while (fgets(line, sizeof(line), p)) {
+            fputs(line, fp);
+            if (strstr(line, "passed")) pass++;
+            if (strstr(line, "FAILED") || strstr(line, "failed")) fail++;
+        }
+        pclose(p);
+    } else {
+        fail = 1;
+    }
+    fprintf(fp, "```\n\n");
+    fprintf(fp, "- Tests passed: %d\n- Tests failed: %d\n", pass, fail);
+    return fail;
+}
+
+static int hc_check_build(FILE *fp) {
+    int ok = (system("make clean > /dev/null 2>&1 && make > /dev/null 2>&1") == 0);
+    fprintf(fp, "- Build (make): %s\n", ok ? "PASS" : "FAIL");
+    return ok;
+}
+
 /* ── Main ─────────────────────────────────────────────────── */
 
 int main(int argc, char** argv) {
@@ -1162,6 +1203,119 @@ int main(int argc, char** argv) {
             printf("\n  ════════════════════════════════════════\n\n");
             sea_arena_destroy(&da);
             return 0;
+        } else if (strcmp(argv[i], "--health-report") == 0) {
+            /* ── Health Report: full diagnostic → Markdown file ── */
+            const char *report_path = "health-report.md";
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                report_path = argv[++i];
+            }
+
+            FILE *fp = fopen(report_path, "w");
+            if (!fp) {
+                fprintf(stderr, "sea_claw: cannot open report file: %s\n", report_path);
+                return 1;
+            }
+
+            /* Timestamp */
+            time_t now = time(NULL);
+            char ts[32];
+            strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
+
+            fprintf(fp, "# sea_claw Health Report\n\n");
+            fprintf(fp, "- **Timestamp:** %s\n", ts);
+            fprintf(fp, "- **Version:** %s\n", SEA_VERSION_STRING);
+
+            int critical_failures = 0;
+
+            /* 1. Prerequisites */
+            hc_section(fp, "Prerequisites");
+            int prereqs_ok = 1;
+            prereqs_ok &= hc_check_tool(fp, "gcc",        "gcc");
+            prereqs_ok &= hc_check_tool(fp, "make",       "make");
+            prereqs_ok &= hc_check_tool(fp, "pkg-config", "pkg-config");
+            {
+                int curl_ok = (system("pkg-config --exists libcurl 2>/dev/null") == 0);
+                fprintf(fp, "- libcurl: %s\n", curl_ok ? "PASS" : "WARN (not found via pkg-config)");
+            }
+            {
+                int sq_ok = (system("pkg-config --exists sqlite3 2>/dev/null") == 0);
+                fprintf(fp, "- libsqlite3: %s\n", sq_ok ? "PASS" : "WARN (not found via pkg-config)");
+            }
+            if (!prereqs_ok) critical_failures++;
+
+            /* 2. Build */
+            hc_section(fp, "Build");
+            int build_ok = hc_check_build(fp);
+            if (!build_ok) critical_failures++;
+
+            /* 3. Tests */
+            hc_section(fp, "Test Results");
+            int test_fails = hc_run_tests(fp);
+            if (test_fails > 0) critical_failures++;
+
+            /* 4. Config */
+            hc_section(fp, "Configuration");
+            {
+                struct stat cfg_st;
+                int cfg_exists = (stat(s_config_path, &cfg_st) == 0);
+                fprintf(fp, "- Config path: `%s`\n", s_config_path);
+                fprintf(fp, "- Config file: %s\n", cfg_exists ? "PASS" : "WARN (not found)");
+                if (cfg_exists) {
+                    SeaArena ha;
+                    sea_arena_create(&ha, 8192);
+                    SeaConfig hcfg;
+                    sea_config_load(&hcfg, s_config_path, &ha);
+                    fprintf(fp, "- LLM provider: %s\n",
+                        (hcfg.llm_provider && hcfg.llm_provider[0]) ? hcfg.llm_provider : "WARN (not set)");
+                    fprintf(fp, "- API key set: %s\n",
+                        (hcfg.llm_api_key && hcfg.llm_api_key[0]) ? "PASS" : "WARN (not set)");
+                    sea_arena_destroy(&ha);
+                }
+            }
+
+            /* 5. Environment Variables */
+            hc_section(fp, "Environment Variables");
+            {
+                const char *env_keys[] = {
+                    "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY",
+                    "GROQ_API_KEY", "COHERE_API_KEY", "MISTRAL_API_KEY",
+                    "SEA_TELEGRAM_TOKEN", NULL
+                };
+                for (int k = 0; env_keys[k]; k++) {
+                    const char *val = getenv(env_keys[k]);
+                    fprintf(fp, "- %s: %s\n", env_keys[k], (val && val[0]) ? "SET" : "NOT SET");
+                }
+            }
+
+            /* 6. Database */
+            hc_section(fp, "Database");
+            {
+                const char *dbp = s_config.db_path ? s_config.db_path : s_db_path;
+                SeaDb *hdb = NULL;
+                int db_ok = (sea_db_open(&hdb, dbp) == SEA_OK);
+                fprintf(fp, "- SQLite DB: %s\n", db_ok ? "PASS" : "FAIL");
+                if (db_ok) sea_db_close(hdb);
+                if (!db_ok) critical_failures++;
+            }
+
+            /* 7. Subsystem Summary */
+            hc_section(fp, "Subsystem Summary");
+            fprintf(fp, "| Subsystem | Status |\n|-----------|--------|\n");
+            fprintf(fp, "| Prerequisites | %s |\n", prereqs_ok ? "GREEN" : "RED");
+            fprintf(fp, "| Build | %s |\n", build_ok ? "GREEN" : "RED");
+            fprintf(fp, "| Tests | %s |\n", test_fails == 0 ? "GREEN" : "RED");
+            fprintf(fp, "| Config | YELLOW (see above) |\n");
+            fprintf(fp, "| Environment | YELLOW (see above) |\n");
+
+            /* 8. Overall Result */
+            hc_section(fp, "Overall Result");
+            fprintf(fp, "**%s** (exit code %d)\n",
+                critical_failures == 0 ? "PASS" : "FAIL",
+                critical_failures == 0 ? 0 : 1);
+
+            fclose(fp);
+            fprintf(stdout, "Health report written to: %s\n", report_path);
+            return (critical_failures > 0) ? 1 : 0;
         } else if (strcmp(argv[i], "--onboard") == 0) {
             /* ── Onboard: interactive first-run setup ──────────── */
             printf("\n\033[1m  Sea-Claw Onboard Wizard\033[0m\n");

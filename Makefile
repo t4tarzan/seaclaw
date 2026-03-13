@@ -251,7 +251,7 @@ TESTBIN_SEAZERO := test_seazero
 
 # ── Targets ───────────────────────────────────────────────────
 
-.PHONY: all clean test install release debug seazero-setup seazero-up seazero-down seazero-health seazero-spawn seazero-list
+.PHONY: all clean test install release debug health seazero-setup seazero-up seazero-down seazero-health seazero-spawn seazero-list
 
 all: $(BIN)
 	@echo ""
@@ -373,6 +373,12 @@ clean:
 	rm -f $(BIN) $(TESTBIN_ARENA) $(TESTBIN_JSON) $(TESTBIN_SHIELD) $(TESTBIN_DB) $(TESTBIN_CONFIG) $(TESTBIN_BUS) $(TESTBIN_SESSION) $(TESTBIN_MEMORY) $(TESTBIN_CRON) $(TESTBIN_SKILL) $(TESTBIN_RECALL) $(TESTBIN_PII) $(TESTBIN_BENCH) $(TESTBIN_SEAZERO)
 	find src tests seazero -name '*.o' -delete 2>/dev/null || true
 	@echo "  Cleaned."
+
+# ── Health check ──────────────────────────────────────────────
+
+health: $(BIN)
+	./$(BIN) --health-report health-report.md
+	@echo "Report written to health-report.md"
 
 # ── Install ───────────────────────────────────────────────────
 
