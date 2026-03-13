@@ -34,6 +34,7 @@ Key numbers at a glance:
 | Source files | 95 |
 | Tools | 57 (static, compiled-in) |
 | Tests | 116 across 13 suites |
+| JSON parse speed | 3 μs/parse |
 | External dependencies | 2: libcurl, libsqlite3 |
 | Binary size | ~203KB (release) |
 | Startup time | < 1ms |
@@ -107,7 +108,7 @@ sudo pacman -S gcc make curl sqlite
 git clone https://github.com/t4tarzan/seaclaw.git
 cd seaclaw
 make release          # Optimized binary (~203KB stripped)
-make test             # 116 tests, 10 suites
+make test             # 116 tests, 13 suites
 sudo make install     # Installs to /usr/local/bin
 ```
 
