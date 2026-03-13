@@ -49,8 +49,8 @@
 
 ### Test Suite
 
-- **116 tests** across **10 suites** (was 61 tests, 5 suites)
-- New suites: Bus (10), Session (11), Memory (8), Cron (14), Skill (12)
+- **116 tests** across **13 suites** (was 61 tests, 5 suites)
+- New suites: Bus (10), Session (11), Memory (8), Cron (14), Skill (12), PII, Recall, SeaZero
 - Performance benchmark suite (`test_bench.c`)
 
 ### Stats
@@ -61,7 +61,7 @@
 | Source files | 74 | 95 |
 | Tools | 50 | 56 |
 | Tests | 61 | 116 |
-| Test suites | 5 | 10 |
+| Test suites | 5 | 13 |
 | Headers | 12 | 20 |
 
 ---

@@ -87,7 +87,7 @@ This interactive installer will:
 1. Detect your package manager (apt/dnf/yum/pacman/apk)
 2. Install build dependencies (gcc, make, libcurl, libsqlite3)
 3. Clone the repo and build a release binary (~203KB)
-4. Run all 116 tests across 10 suites
+4. Run all 116 tests across 13 suites
 5. Walk you through LLM provider selection (OpenRouter/OpenAI/Gemini/Anthropic/Local)
 6. Configure API keys and optional fallback providers
 7. Optionally set up a Telegram bot
@@ -136,7 +136,7 @@ git clone https://github.com/t4tarzan/seaclaw.git
 cd seaclaw
 
 make release          # Optimized binary (~203KB stripped)
-make test             # 116 tests, 10 suites
+make test             # 116 tests, 13 suites
 sudo make install     # Installs to /usr/local/bin
 ```
 
@@ -192,7 +192,7 @@ In TUI mode, type commands or natural language:
 
 ```
 🦀 > /help                          # Full command reference
-🦀 > /tools                         # List all 56 tools
+🦀 > /tools                         # List all 57 tools
 🦀 > /exec echo Hello World         # Run a tool directly
 🦀 > /status                        # System status
 🦀 > What files are in /tmp?        # Natural language → AI + tools
@@ -302,7 +302,7 @@ Sea-Claw Memory Tests:    8 passed  (workspace, bootstrap, daily notes, context)
 Sea-Claw Cron Tests:     14 passed  (schedule parsing, CRUD, tick, one-shot)
 Sea-Claw Skill Tests:    12 passed  (parse, load, registry, enable/disable)
 ─────────────────────────────────────────────
-Total: 116 passed, 0 failed (10 suites)
+Total: 116 passed, 0 failed (13 suites)
 ```
 
 ## Security Model
@@ -357,9 +357,9 @@ seaclaw/
 │   ├── usage/             # Token usage tracking
 │   ├── a2a/               # Agent-to-Agent delegation protocol
 │   ├── telegram/          # Telegram bot
-│   ├── hands/             # Tool registry + 56 implementations
+│   ├── hands/             # Tool registry + 57 implementations
 │   └── main.c             # Event loop + config + agent wiring
-├── tests/                 # 116 tests across 10 suites
+├── tests/                 # 116 tests across 13 suites
 ├── config/                # Example config files
 ├── Makefile               # Build system
 └── dist/                  # Release binary
@@ -381,7 +381,7 @@ seaclaw/
 | Source files | 95 |
 | External dependencies | libcurl, libsqlite3 |
 | C standard | C11 |
-| Tests | 116 (10 suites, all passing) |
+| Tests | 116 (13 suites, all passing) |
 | Tools | 57 (file, shell, web, search, text, data, hash, DNS, SSL, weather, math, cron, memory, recall, spawn, message) |
 | Binary size | ~3 MB (debug), ~1.5 MB (release) |
 | Startup time | < 1 ms |
