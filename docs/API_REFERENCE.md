@@ -735,7 +735,7 @@ sea_bus_destroy(&bus);
 **File:** `include/seaclaw/sea_channel.h`
 **Dependencies:** `sea_types.h`, `sea_arena.h`, `sea_bus.h`
 **Implementation:** `src/channel/sea_channel.c`
-**Tests:** `tests/test_channel.c` (8 tests)
+**Tests:** No dedicated test file; channel is exercised via integration through `tests/test_bus.c` and `tests/test_session.c`
 
 ### Types
 
