@@ -10,6 +10,7 @@
 #include "seaclaw/sea_json.h"
 #include "seaclaw/sea_shield.h"
 #include "seaclaw/sea_log.h"
+#include "seaclaw/sea_tools.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -277,9 +278,19 @@ SeaError sea_mesh_crew_register(SeaMesh* mesh, SeaArena* arena) {
         "{\"name\":\"%s\",\"endpoint\":\"http://localhost:%u\",\"capabilities\":[",
         mesh->config.node_name, mesh->config.port);
 
-    /* TODO: enumerate local tools as capabilities */
-    pos += snprintf(json + pos, sizeof(json) - (size_t)pos,
-        "\"file_read\",\"file_write\",\"shell_exec\",\"dir_list\"");
+    /* Enumerate all compiled-in tools as capabilities (IDs are 1-indexed) */
+    u32 tool_count = sea_tools_count();
+    u32 written = 0;
+    for (u32 i = 1; i <= tool_count; i++) {
+        const SeaTool* t = sea_tool_by_id(i);
+        if (!t) continue;
+        if (written > 0) {
+            pos += snprintf(json + pos, sizeof(json) - (size_t)pos, ",");
+        }
+        pos += snprintf(json + pos, sizeof(json) - (size_t)pos,
+            "\"%s\"", t->name);
+        written++;
+    }
 
     pos += snprintf(json + pos, sizeof(json) - (size_t)pos, "]}");
 
