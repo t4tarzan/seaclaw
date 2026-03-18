@@ -27,9 +27,6 @@
 #include "seaclaw/sea_recall.h"
 #include "seaclaw/sea_pii.h"
 #include "seaclaw/sea_mesh.h"
-#include "sea_zero.h"
-#include "sea_proxy.h"
-#include "sea_workspace.h"
 #include <pthread.h>
 
 #include <stdio.h>
@@ -38,7 +35,6 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <time.h>
 
 /* ── Constants ────────────────────────────────────────────── */
 
@@ -157,12 +153,6 @@ static void cmd_help(void) {
     printf("    /tasks             List pending tasks\n");
     printf("    /clear             Clear screen\n");
     printf("    /quit              Exit Sea-Claw\n");
-    printf("\n  \033[1mSeaZero (Agent Zero):\033[0m\n");
-    printf("    /agents            List Agent Zero instances\n");
-    printf("    /delegate <task>   Delegate task to Agent Zero\n");
-    printf("    /sztasks           Show delegated task history\n");
-    printf("    /usage             LLM token usage breakdown\n");
-    printf("    /audit             Recent security events\n");
     printf("\n");
 }
 
@@ -244,117 +234,6 @@ static void dispatch_command(const char* input) {
                 if (strcmp(tasks[i].status, "completed") == 0) icon = "\033[32m✓\033[0m";
                 else if (strcmp(tasks[i].status, "in_progress") == 0) icon = "\033[33m►\033[0m";
                 printf("    %s [%s] %s\n", icon, tasks[i].priority, tasks[i].title);
-            }
-            printf("\n");
-            sea_arena_reset(&s_request_arena);
-        }
-    } else if (strcmp(input, "/agents") == 0) {
-        if (!s_db) { printf("  No database loaded.\n"); }
-        else {
-            SeaDbAgent agents[16];
-            i32 ac = sea_db_sz_agent_list(s_db, agents, 16, &s_request_arena);
-            printf("\n  \033[1mAgent Zero Instances (%d):\033[0m\n", ac);
-            if (ac == 0) {
-                printf("    (none registered — enable with 'make seazero-setup')\n");
-            }
-            for (i32 i = 0; i < ac; i++) {
-                const char* icon = "\033[32m●\033[0m";
-                if (strcmp(agents[i].status, "offline") == 0) icon = "\033[31m●\033[0m";
-                else if (strcmp(agents[i].status, "busy") == 0) icon = "\033[33m●\033[0m";
-                printf("    %s %s  port:%d  %s/%s  [%s]\n",
-                       icon, agents[i].agent_id, agents[i].port,
-                       agents[i].provider ? agents[i].provider : "?",
-                       agents[i].model ? agents[i].model : "?",
-                       agents[i].status);
-            }
-            printf("\n");
-            sea_arena_reset(&s_request_arena);
-        }
-    } else if (strncmp(input, "/delegate ", 10) == 0) {
-        const char* task_desc = input + 10;
-        if (!task_desc[0]) { printf("  Usage: /delegate <task description>\n"); }
-        else if (!s_db) { printf("  No database loaded.\n"); }
-        else {
-            printf("\n  \033[33m⟳\033[0m Delegating to Agent Zero: %.60s%s\n",
-                   task_desc, strlen(task_desc) > 60 ? "..." : "");
-
-            SeaZeroConfig zcfg = {0};
-            SeaArena sz_arena;
-            sea_arena_create(&sz_arena, 4096);
-            const char* sz_url = sea_db_config_get(s_db, "seazero_agent_url", &sz_arena);
-            sea_zero_init(&zcfg, sz_url);
-
-            SeaZeroTask ztask = { .task = task_desc, .max_steps = 10 };
-            SeaZeroResult zres = sea_zero_delegate(&zcfg, &ztask, &s_request_arena);
-
-            if (zres.success) {
-                printf("  \033[32m✓\033[0m Result:\n\n%s\n\n", zres.result);
-            } else {
-                printf("  \033[31m✗\033[0m %s\n\n", zres.error ? zres.error : "Unknown error");
-            }
-            sea_arena_destroy(&sz_arena);
-            sea_arena_reset(&s_request_arena);
-        }
-    } else if (strcmp(input, "/sztasks") == 0) {
-        if (!s_db) { printf("  No database loaded.\n"); }
-        else {
-            SeaDbSzTask sztasks[32];
-            i32 tc = sea_db_sz_task_list(s_db, NULL, sztasks, 32, &s_request_arena);
-            printf("\n  \033[1mSeaZero Tasks (%d):\033[0m\n", tc);
-            if (tc == 0) {
-                printf("    (no delegated tasks yet)\n");
-            }
-            for (i32 i = 0; i < tc; i++) {
-                const char* icon = "○";
-                if (strcmp(sztasks[i].status, "completed") == 0) icon = "\033[32m✓\033[0m";
-                else if (strcmp(sztasks[i].status, "running") == 0) icon = "\033[33m►\033[0m";
-                else if (strcmp(sztasks[i].status, "failed") == 0) icon = "\033[31m✗\033[0m";
-                printf("    %s [%s] %s → %.50s%s\n",
-                       icon, sztasks[i].status, sztasks[i].agent_id,
-                       sztasks[i].task_text ? sztasks[i].task_text : "",
-                       (sztasks[i].task_text && strlen(sztasks[i].task_text) > 50) ? "..." : "");
-            }
-            printf("\n");
-            sea_arena_reset(&s_request_arena);
-        }
-    } else if (strcmp(input, "/usage") == 0) {
-        if (!s_db) { printf("  No database loaded.\n"); }
-        else {
-            i64 sc_tokens = sea_db_sz_llm_total_tokens(s_db, "seaclaw");
-            i64 az_tokens = sea_db_sz_llm_total_tokens(s_db, "agent-zero");
-            i64 total = sc_tokens + az_tokens;
-            printf("\n  \033[1mLLM Token Usage:\033[0m\n");
-            printf("    SeaClaw:     %lld tokens\n", (long long)sc_tokens);
-            printf("    Agent Zero:  %lld tokens\n", (long long)az_tokens);
-            printf("    ─────────────────────\n");
-            printf("    Total:       %lld tokens\n", (long long)total);
-            if (total > 0) {
-                printf("    Split:       %.0f%% SeaClaw / %.0f%% Agent Zero\n",
-                       (double)sc_tokens / (double)total * 100.0,
-                       (double)az_tokens / (double)total * 100.0);
-            }
-            printf("\n");
-        }
-    } else if (strcmp(input, "/audit") == 0) {
-        if (!s_db) { printf("  No database loaded.\n"); }
-        else {
-            SeaDbAuditEvent events[20];
-            i32 ec = sea_db_sz_audit_list(s_db, events, 20, &s_request_arena);
-            printf("\n  \033[1mRecent Audit Events (%d):\033[0m\n", ec);
-            if (ec == 0) {
-                printf("    (no events)\n");
-            }
-            for (i32 i = 0; i < ec; i++) {
-                const char* icon = "·";
-                if (events[i].severity && strcmp(events[i].severity, "warn") == 0) icon = "\033[33m⚠\033[0m";
-                else if (events[i].severity && strcmp(events[i].severity, "error") == 0) icon = "\033[31m✗\033[0m";
-                printf("    %s [%s] %s → %s",
-                       icon,
-                       events[i].event_type ? events[i].event_type : "?",
-                       events[i].source ? events[i].source : "?",
-                       events[i].target ? events[i].target : "-");
-                if (events[i].created_at) printf("  (%s)", events[i].created_at);
-                printf("\n");
             }
             printf("\n");
             sea_arena_reset(&s_request_arena);
@@ -1088,47 +967,6 @@ static int run_gateway(const char* tg_token, i64 tg_chat_id) {
     return 0;
 }
 
-/* ── Health Report Helpers ────────────────────────────────── */
-
-static void hc_section(FILE *fp, const char *title) {
-    fprintf(fp, "\n## %s\n\n", title);
-}
-
-static int hc_check_tool(FILE *fp, const char *cmd, const char *label) {
-    char buf[128];
-    snprintf(buf, sizeof(buf), "which %s > /dev/null 2>&1", cmd);
-    int ok = (system(buf) == 0);
-    fprintf(fp, "- %s: %s\n", label, ok ? "PASS" : "FAIL");
-    return ok;
-}
-
-static int hc_run_tests(FILE *fp) {
-    fprintf(fp, "```\n");
-    FILE *p = popen("make test-docker 2>&1", "r");
-    int pass = 0, fail = 0;
-    char line[512];
-    if (p) {
-        while (fgets(line, sizeof(line), p)) {
-            fputs(line, fp);
-            if (strstr(line, "passed")) pass++;
-            if (strstr(line, "FAILED") || strstr(line, "failed")) fail++;
-        }
-        int rc = pclose(p);
-        if (rc != 0 && fail == 0) fail = 1;
-    } else {
-        fail = 1;
-    }
-    fprintf(fp, "```\n\n");
-    fprintf(fp, "- Tests passed: %d\n- Tests failed: %d\n", pass, fail);
-    return fail;
-}
-
-static int hc_check_build(FILE *fp) {
-    int ok = (system("make clean > /dev/null 2>&1 && make > /dev/null 2>&1") == 0);
-    fprintf(fp, "- Build (make): %s\n", ok ? "PASS" : "FAIL");
-    return ok;
-}
-
 /* ── Main ─────────────────────────────────────────────────── */
 
 int main(int argc, char** argv) {
@@ -1204,121 +1042,6 @@ int main(int argc, char** argv) {
             printf("\n  ════════════════════════════════════════\n\n");
             sea_arena_destroy(&da);
             return 0;
-        } else if (strcmp(argv[i], "--health-report") == 0) {
-            /* ── Health Report: full diagnostic → Markdown file ── */
-            const char *report_path = "health-report.md";
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
-                report_path = argv[++i];
-            }
-
-            FILE *fp = fopen(report_path, "w");
-            if (!fp) {
-                fprintf(stderr, "sea_claw: cannot open report file: %s\n", report_path);
-                return 1;
-            }
-
-            /* Load .env and config early so env vars and db_path are correct in all sections */
-            load_dotenv(".env");
-            SeaArena ha;
-            sea_arena_create(&ha, 8192);
-            SeaConfig hcfg = {0};
-            sea_config_load(&hcfg, s_config_path, &ha);
-
-            /* Timestamp */
-            time_t now = time(NULL);
-            char ts[32];
-            strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
-
-            fprintf(fp, "# sea_claw Health Report\n\n");
-            fprintf(fp, "- **Timestamp:** %s\n", ts);
-            fprintf(fp, "- **Version:** %s\n", SEA_VERSION_STRING);
-
-            int critical_failures = 0;
-
-            /* 1. Prerequisites */
-            hc_section(fp, "Prerequisites");
-            int prereqs_ok = 1;
-            prereqs_ok &= hc_check_tool(fp, "gcc",        "gcc");
-            prereqs_ok &= hc_check_tool(fp, "make",       "make");
-            prereqs_ok &= hc_check_tool(fp, "pkg-config", "pkg-config");
-            {
-                int curl_ok = (system("pkg-config --exists libcurl 2>/dev/null") == 0);
-                fprintf(fp, "- libcurl: %s\n", curl_ok ? "PASS" : "WARN (not found via pkg-config)");
-            }
-            {
-                int sq_ok = (system("pkg-config --exists sqlite3 2>/dev/null") == 0);
-                fprintf(fp, "- libsqlite3: %s\n", sq_ok ? "PASS" : "WARN (not found via pkg-config)");
-            }
-            if (!prereqs_ok) critical_failures++;
-
-            /* 2. Build */
-            hc_section(fp, "Build");
-            int build_ok = hc_check_build(fp);
-            if (!build_ok) critical_failures++;
-
-            /* 3. Tests */
-            hc_section(fp, "Test Results");
-            int test_fails = hc_run_tests(fp);
-            if (test_fails > 0) critical_failures++;
-
-            /* 4. Config — use hcfg loaded above */
-            hc_section(fp, "Configuration");
-            {
-                struct stat cfg_st;
-                int cfg_exists = (stat(s_config_path, &cfg_st) == 0);
-                fprintf(fp, "- Config path: `%s`\n", s_config_path);
-                fprintf(fp, "- Config file: %s\n", cfg_exists ? "PASS" : "WARN (not found)");
-                fprintf(fp, "- LLM provider: %s\n",
-                    (hcfg.llm_provider && hcfg.llm_provider[0]) ? hcfg.llm_provider : "WARN (not set)");
-                fprintf(fp, "- API key set: %s\n",
-                    (hcfg.llm_api_key && hcfg.llm_api_key[0]) ? "PASS" : "WARN (not set)");
-            }
-
-            /* 5. Environment Variables — loaded via load_dotenv() above */
-            hc_section(fp, "Environment Variables");
-            {
-                const char *env_keys[] = {
-                    "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY",
-                    "GROQ_API_KEY", "COHERE_API_KEY", "MISTRAL_API_KEY",
-                    "SEA_TELEGRAM_TOKEN", NULL
-                };
-                for (int k = 0; env_keys[k]; k++) {
-                    const char *val = getenv(env_keys[k]);
-                    fprintf(fp, "- %s: %s\n", env_keys[k], (val && val[0]) ? "SET" : "NOT SET");
-                }
-            }
-
-            /* 6. Database — use hcfg.db_path so config.json db_path is honoured */
-            hc_section(fp, "Database");
-            {
-                const char *dbp = hcfg.db_path ? hcfg.db_path : s_db_path;
-                SeaDb *hdb = NULL;
-                int db_ok = (sea_db_open(&hdb, dbp) == SEA_OK);
-                fprintf(fp, "- SQLite DB (`%s`): %s\n", dbp, db_ok ? "PASS" : "FAIL");
-                if (db_ok) sea_db_close(hdb);
-                if (!db_ok) critical_failures++;
-            }
-
-            sea_arena_destroy(&ha);
-
-            /* 7. Subsystem Summary */
-            hc_section(fp, "Subsystem Summary");
-            fprintf(fp, "| Subsystem | Status |\n|-----------|--------|\n");
-            fprintf(fp, "| Prerequisites | %s |\n", prereqs_ok ? "GREEN" : "RED");
-            fprintf(fp, "| Build | %s |\n", build_ok ? "GREEN" : "RED");
-            fprintf(fp, "| Tests | %s |\n", test_fails == 0 ? "GREEN" : "RED");
-            fprintf(fp, "| Config | YELLOW (see above) |\n");
-            fprintf(fp, "| Environment | YELLOW (see above) |\n");
-
-            /* 8. Overall Result */
-            hc_section(fp, "Overall Result");
-            fprintf(fp, "**%s** (exit code %d)\n",
-                critical_failures == 0 ? "PASS" : "FAIL",
-                critical_failures == 0 ? 0 : 1);
-
-            fclose(fp);
-            fprintf(stdout, "Health report written to: %s\n", report_path);
-            return (critical_failures > 0) ? 1 : 0;
         } else if (strcmp(argv[i], "--onboard") == 0) {
             /* ── Onboard: interactive first-run setup ──────────── */
             printf("\n\033[1m  Sea-Claw Onboard Wizard\033[0m\n");
@@ -1514,7 +1237,6 @@ int main(int argc, char** argv) {
             printf("  --chat <id>         Restrict to chat ID\n");
             printf("  --db <path>         Database file (default: seaclaw.db)\n");
             printf("  --doctor            Diagnose config, providers, channels\n");
-            printf("  --health-report [path]  Full health check, writes Markdown report\n");
             printf("  --onboard           Interactive first-run setup wizard\n");
             printf("  -h, --help          Show this help\n");
             return 0;
@@ -1679,49 +1401,6 @@ int main(int argc, char** argv) {
         SEA_LOG_INFO("RECALL", "Memory index ready (%u facts)", sea_recall_count(s_recall));
     }
 
-    /* Initialize SeaZero (Agent Zero integration — opt-in) */
-    {
-        SeaArena sz_arena;
-        sea_arena_create(&sz_arena, 4096);
-        const char* sz_enabled = s_db ? sea_db_config_get(s_db, "seazero_enabled", &sz_arena) : NULL;
-        if (sz_enabled && strcmp(sz_enabled, "true") == 0) {
-            const char* sz_token = sea_db_config_get(s_db, "seazero_internal_token", &sz_arena);
-            const char* sz_url   = sea_db_config_get(s_db, "seazero_agent_url", &sz_arena);
-            const char* sz_budget = sea_db_config_get(s_db, "seazero_token_budget", &sz_arena);
-
-            /* Initialize bridge */
-            SeaZeroConfig zcfg = {0};
-            sea_zero_init(&zcfg, sz_url);
-            sea_zero_register_tool(&zcfg);
-
-            /* Start LLM proxy if we have an API key */
-            if (s_agent_cfg.api_key && *s_agent_cfg.api_key) {
-                SeaProxyConfig pcfg = {
-                    .port            = 7432,
-                    .internal_token  = sz_token,
-                    .real_api_url    = s_agent_cfg.api_url ? s_agent_cfg.api_url : "https://openrouter.ai/api/v1/chat/completions",
-                    .real_api_key    = s_agent_cfg.api_key,
-                    .real_provider   = s_config.llm_provider,
-                    .real_model      = s_config.llm_model,
-                    .daily_token_budget = sz_budget ? atoll(sz_budget) : 100000,
-                    .db              = s_db,
-                    .enabled         = true
-                };
-                if (sea_proxy_start(&pcfg) == 0) {
-                    SEA_LOG_INFO("SEAZERO", "LLM proxy active on 127.0.0.1:7432");
-                }
-            }
-
-            /* Initialize shared workspace */
-            SeaWorkspaceConfig wscfg = {0};
-            wscfg.retention_days = 7;
-            sea_workspace_init(&wscfg);
-
-            SEA_LOG_INFO("SEAZERO", "Agent Zero integration enabled (tool #58)");
-        }
-        sea_arena_destroy(&sz_arena);
-    }
-
     /* Initialize mesh engine if --mode specified */
     if (s_mesh_mode && s_mesh_role_str) {
         SeaMeshConfig mcfg;
@@ -1787,7 +1466,6 @@ int main(int argc, char** argv) {
 
     printf("\n");
     SEA_LOG_INFO("SYSTEM", "Shutting down...");
-    sea_proxy_stop(); /* Stop LLM proxy if running (no-op if not started) */
     if (s_mesh) { sea_mesh_destroy(s_mesh); s_mesh = NULL; }
     if (s_usage) { sea_usage_save(s_usage); s_usage = NULL; }
     if (s_recall) { sea_recall_destroy(s_recall); s_recall = NULL; }
