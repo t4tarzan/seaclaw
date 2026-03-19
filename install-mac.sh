@@ -468,6 +468,7 @@ if [[ -n "$TG_TOKEN" ]]; then
     echo "TELEGRAM_CHAT_ID=$TG_CHAT_ID" >> "$ENV_FILE"
 fi
 
+chmod 600 "$CONFIG_FILE" "$ENV_FILE"
 ok "Environment saved: $ENV_FILE"
 
 # ── Summary & Launch ─────────────────────────────────────────
