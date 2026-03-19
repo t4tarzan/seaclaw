@@ -67,3 +67,7 @@ claude.md
 docs/PERFORMANCE_PHILOSOPHY.md
 docs/PROJECT_STRUCTURE.md
 docs/TERMINAL_UX_REFERENCE.md
+
+# ── Business development assets (not for public repo) ─────────
+*.mp4
+doc/anthropic-partnership-pitch.md

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Sea-Claw Interactive Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh | bash
+# Sea-Claw macOS Interactive Installer
+# Usage: curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install-mac.sh | bash
 #
 # Features:
 #   - Interactive setup wizard with arrow-key menus
@@ -40,7 +40,7 @@ show_banner() {
     echo -e "${BOLD}${CYAN}"
     echo "    ╔═══════════════════════════════════════════╗"
     echo "    ║                                           ║"
-    echo "    ║   🦀  Sea-Claw Installer  v2.0.0         ║"
+    echo "    ║   🦀  Sea-Claw macOS Installer  v2.0.0   ║"
     echo "    ║                                           ║"
     echo "    ║   Sovereign AI Agent Platform             ║"
     echo "    ║   Pure C11 · 56 Tools · Zero Dependencies ║"
@@ -227,43 +227,40 @@ show_banner
 # ── Step 1: Pre-flight ───────────────────────────────────────
 header "Step 1/6 — System Check"
 
-[[ "$(uname -s)" == "Linux" ]] || die "Sea-Claw currently supports Linux only."
-ok "Linux detected: $(uname -sr)"
+[[ "$(uname -s)" == "Darwin" ]] || die "This installer is for macOS only. On Linux, run: curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install.sh | bash"
+ok "macOS detected: $(sw_vers -productVersion) ($(uname -m))"
 
-SUDO=""
-if [[ $EUID -ne 0 ]]; then
-    command -v sudo &>/dev/null || die "Please run as root or install sudo."
-    SUDO="sudo"
-    ok "Running as user (sudo available)"
-else
-    ok "Running as root"
+# Xcode Command Line Tools check
+if ! xcode-select -p &>/dev/null 2>&1; then
+    info "Xcode Command Line Tools not found — installing..."
+    warn "A dialog will appear. Click 'Install', wait for completion, then press Enter."
+    xcode-select --install 2>/dev/null || true
+    echo -ne "  Press Enter once Xcode CLT installation completes... "
+    read -r
 fi
+ok "Xcode CLT: $(xcode-select -p)"
 
-# ── Step 2: Install Dependencies ─────────────────────────────
+# Detect Homebrew prefix (Apple Silicon vs Intel)
+if [[ "$(uname -m)" == "arm64" ]]; then
+    BREW_PREFIX="/opt/homebrew"
+else
+    BREW_PREFIX="/usr/local"
+fi
+export PATH="$BREW_PREFIX/bin:$PATH"
+
+# ── Step 2: Homebrew + Dependencies ──────────────────────────
 header "Step 2/6 — Installing Build Dependencies"
 
-if command -v apt-get &>/dev/null; then
-    info "Package manager: apt"
-    $SUDO apt-get update -qq 2>/dev/null
-    $SUDO apt-get install -y -qq build-essential libcurl4-openssl-dev libsqlite3-dev git 2>/dev/null
-elif command -v dnf &>/dev/null; then
-    info "Package manager: dnf"
-    $SUDO dnf install -y -q gcc make libcurl-devel sqlite-devel git
-elif command -v yum &>/dev/null; then
-    info "Package manager: yum"
-    $SUDO yum install -y -q gcc make libcurl-devel sqlite-devel git
-elif command -v pacman &>/dev/null; then
-    info "Package manager: pacman"
-    $SUDO pacman -Sy --noconfirm --quiet gcc make curl sqlite git
-elif command -v apk &>/dev/null; then
-    info "Package manager: apk"
-    $SUDO apk add -q gcc musl-dev make curl-dev sqlite-dev git
-else
-    die "Unsupported package manager. Install manually: gcc, make, libcurl-dev, libsqlite3-dev, git"
+if ! command -v brew &>/dev/null; then
+    info "Homebrew not found — installing..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    export PATH="$BREW_PREFIX/bin:$PATH"
 fi
+ok "Homebrew: $(brew --version | head -1)"
 
-ok "gcc $(gcc --version | head -1 | grep -oP '\d+\.\d+\.\d+')"
-ok "Dependencies ready"
+info "Installing dependencies (curl, sqlite3, git)..."
+brew install curl sqlite3 git 2>/dev/null || true
+ok "Dependencies ready (curl, sqlite3, git)"
 
 # ── Step 3: Clone & Build ────────────────────────────────────
 header "Step 3/6 — Building Sea-Claw"
@@ -292,7 +289,7 @@ make test 2>&1 | grep -E "(passed|failed|Results)" | tail -12
 ok "All tests passed"
 
 info "Installing to /usr/local/bin..."
-$SUDO install -m 755 dist/sea_claw /usr/local/bin/sea_claw
+sudo install -m 755 dist/sea_claw /usr/local/bin/sea_claw
 ok "Installed: /usr/local/bin/sea_claw"
 
 # ── Step 4: LLM Provider Setup ──────────────────────────────
@@ -448,7 +445,6 @@ cat > "$CONFIG_FILE" << JSONEOF
     "llm_model": "$LLM_MODEL",
     "llm_api_url": "$LLM_URL",
     "llm_fallbacks": [$(echo "$FALLBACKS_JSON" | sed 's/},{/},\n        {/g')]
-    ]
 }
 JSONEOF
 
@@ -472,6 +468,7 @@ if [[ -n "$TG_TOKEN" ]]; then
     echo "TELEGRAM_CHAT_ID=$TG_CHAT_ID" >> "$ENV_FILE"
 fi
 
+chmod 600 "$CONFIG_FILE" "$ENV_FILE"
 ok "Environment saved: $ENV_FILE"
 
 # ── Summary & Launch ─────────────────────────────────────────
