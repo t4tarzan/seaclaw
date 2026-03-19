@@ -445,7 +445,6 @@ cat > "$CONFIG_FILE" << JSONEOF
     "llm_model": "$LLM_MODEL",
     "llm_api_url": "$LLM_URL",
     "llm_fallbacks": [$(echo "$FALLBACKS_JSON" | sed 's/},{/},\n        {/g')]
-    ]
 }
 JSONEOF
 
