@@ -61,7 +61,13 @@ CFLAGS := $(CFLAGS_DEBUG)
 # Linker
 LDFLAGS := -lm -lcurl -lsqlite3 -lpthread
 LDFLAGS_DEBUG := -fsanitize=address,undefined
-LDFLAGS_RELEASE := -flto -Wl,--as-needed -pie
+# ── OS-specific linker flags ──────────────────────────────────
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+  LDFLAGS_RELEASE := -flto -Wl,-pie
+else
+  LDFLAGS_RELEASE := -flto -Wl,--as-needed -pie
+endif
 
 # ── Source files ──────────────────────────────────────────────
 
