@@ -93,19 +93,20 @@ This interactive installer will:
 7. Optionally set up a Telegram bot
 8. Generate `config.json` and launch Sea-Claw
 
-### macOS
+### macOS (Intel & Apple Silicon)
 
 ```bash
-# Install dependencies via Homebrew
-brew install curl sqlite3
-
-# Clone and build
-git clone https://github.com/t4tarzan/seaclaw.git
-cd seaclaw
-make release
-make test
-sudo make install
+curl -fsSL https://raw.githubusercontent.com/t4tarzan/seaclaw/main/install-mac.sh | bash
 ```
+
+This one-liner:
+- Checks for Xcode Command Line Tools (installs if missing)
+- Installs Homebrew dependencies (`curl`, `sqlite3`)
+- Builds the release binary from source
+- Runs all 116 tests
+- Walks you through LLM provider selection
+- Configures API keys and optional Telegram bot
+- Generates `~/.config/seaclaw/config.json` and launches Sea-Claw
 
 ### Windows (via WSL2)
 
